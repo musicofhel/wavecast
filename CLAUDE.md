@@ -7,8 +7,9 @@ Wavelet-shapelet financial forecasting library with SAX tokenization and transfo
 ```bash
 cd ~/wavecast
 source .venv/bin/activate
-pytest tests/ -q          # 349 tests, ~9s on GPU
+pytest tests/ -q          # 391 tests, ~9s on GPU
 ruff check src/ tests/    # 0 errors
+maturin develop --release # build Rust extension (optional, Python fallback available)
 ```
 
 ## Environment
@@ -16,6 +17,7 @@ ruff check src/ tests/    # 0 errors
 - Python 3.12.12, venv at `.venv/`
 - PyTorch 2.10.0+cu128, CUDA 13.1
 - GPU: NVIDIA RTX 2060 SUPER (8GB VRAM) — auto-detected via `torch.cuda.is_available()`
+- Rust 1.93.0 + maturin (build system for Rust/PyO3 extension)
 - Data API: Massive.com — `MASSIVE_API_KEY` in `.env` (gitignored)
 - `.env.example` has the template
 
@@ -24,7 +26,8 @@ ruff check src/ tests/    # 0 errors
 ```
 src/wavecast/
   core/         — types, config, exceptions, universe (DEFAULT=Phase3, LEGACY=Phase1-2)
-  data/         — Massive.com fetcher, cache, preprocessing, storage, decomposition cache
+  _rust.py      — Rust/PyO3 fallback wrapper (HAS_RUST flag)
+  data/         — Massive.com fetcher, cache, preprocessing, storage, decomposition cache, MMapSequenceDataset
   wavelets/     — DWT decompose, CWT scalogram, reconstruction
   shapelets/    — W-TSS discovery, quality metrics, library, clustering
   dtw/          — DTW matching, ShapeDTW, similarity, subsequence search
@@ -32,21 +35,22 @@ src/wavecast/
   features/     — pipeline combining wavelet+shapelet+fractal+market+SAX features
   sax/          — PAA, SAX transform, Bag-of-Words + TF-IDF, price reconstruction
   tokenizer/    — SAXVocabulary, WaveletSAXTokenizer, sequence dataset builder
-  models/       — WaveletLSTM, WaveletGPT, XGBoost, ensemble, registry
+  models/       — WaveletLSTM, WaveletGPT (AMP), XGBoost, ensemble, registry, BatchPredictor
   evaluation/   — metrics (16 risk metrics), walk-forward backtest, token prediction eval, signal reporting
   signals/      — SignalGenerator, SignalBacktest, PositionSizer, TransactionCostModel, signal types & config
   experiments/  — ExperimentConfig, ExperimentResult, Runner, Splitter, Metrics, Storage, HPO
   pipeline/     — stage orchestration, runner, library builder, token pipeline
   cli/          — Typer CLI: data, discover, match, analyze, forecast, library, backtest, sax, tokenize, experiment, signal
   viz/          — scalogram, shapelet gallery, DTW alignment, forecast, fractal plots
+rust/           — PyO3 extension crate (sax_words, bow, vocab, dataset acceleration)
 tests/
-  unit/         — 51 test files, 347 unit tests
-  integration/  — 2 integration tests (pipeline, signal pipeline)
+  unit/         — 55 test files, 385 unit tests
+  integration/  — 3 integration tests (pipeline, signal pipeline, performance)
   fixtures/     — deterministic generators (seed=42)
 scripts/        — experiment runners (run_C1-C7, run_D1_D4, run_F1/F4/F5/F6), fetch_phase3_universe.py
 ```
 
-100 source files, 58 test files, 349 tests passing.
+~108 source files, 62 test files, 391 tests passing.
 
 ## Architecture: Two Pipelines
 
@@ -81,6 +85,13 @@ WaveletGPT.predict_proba() → SignalGenerator → PositionSizer → SignalBackt
 - Transaction costs: commission + spread (bps) + slippage (bps); direction changes double costs
 - 16 risk metrics: Sharpe, Sortino, Calmar, max drawdown, profit factor, VaR, CVaR, win rate, avg win/loss ratio, expectancy, tail ratio, total/annualized return, volatility, num trades, avg trade return
 - Per-trade records with entry/exit timestamps, gross/net returns, cost breakdown
+
+### Performance Optimization (Phase 6)
+- **Rust/PyO3 acceleration**: `extract_words`, `build_bow`, `build_corpus_tfidf`, `encode_batch`, `build_sliding_windows` — compiled Rust with Python fallback (`HAS_RUST` flag)
+- **AMP mixed-precision**: `torch.autocast` + `GradScaler` in WaveletGPT fit/predict — no-op on CPU
+- **Memory-mapped datasets**: `MMapSequenceDataset` — zero-copy `.npy` loading via `np.load(mmap_mode='r')`
+- **Batch inference**: `BatchPredictor` with `predict_stream()`/`predict_proba_stream()` iterators, `torch.inference_mode()`
+- Build: `maturin develop --release` (Rust 1.93 + maturin required)
 
 ### Experiment Framework (Phase 3)
 ```
@@ -138,6 +149,11 @@ from wavecast.signals.config import SignalConfig, PositionSizingConfig, Transact
 from wavecast.evaluation.metrics import sortino_ratio, calmar_ratio, value_at_risk, conditional_var
 from wavecast.evaluation.metrics import win_rate, avg_win_loss_ratio, expectancy, tail_ratio
 from wavecast.evaluation.reporting import generate_signal_report
+
+# Phase 6 Performance
+from wavecast._rust import HAS_RUST  # True if Rust extension compiled
+from wavecast.data.mmap_dataset import MMapSequenceDataset
+from wavecast.models.batch_inference import BatchPredictor
 ```
 
 ## CLI
@@ -186,7 +202,7 @@ Pydantic `BaseSettings` hierarchy in `core/config.py`:
 - `BacktestConfig` — capital, position size, commission, walk-forward splits
 - `SAXConfig` — n_segments=512, alphabet_size=7, word_length=4, word_stride=1 (Phase 4 Optuna)
 - `TokenizerConfig` — context_length=16, min_word_freq=1, max_vocab_size=100
-- `SequenceModelConfig` — embed_dim=128, num_heads=4, num_layers=6, dropout=0.2, epochs=80, lr=0.0005, patience=15 (Phase 4 Optuna, dwt_levels=[1,2,5])
+- `SequenceModelConfig` — embed_dim=128, num_heads=4, num_layers=6, dropout=0.2, epochs=80, lr=0.0005, patience=15, use_amp=False, mmap_dataset_dir=None (Phase 4 Optuna + Phase 6 perf)
 - `WaveCastConfig` — top-level aggregator with data/library/model/cache dirs + signal_backtest
 - `SignalConfig` — confidence_threshold, calibration_method, temperature
 - `PositionSizingConfig` — method (fixed/linear/kelly/fractional_kelly), max_position, kelly_fraction, min_position
@@ -251,26 +267,38 @@ WaveCastError
 - `PositionSizer.min_position` uses strict `<` comparison — confidence exactly equal to min_position is NOT filtered out
 - `TransactionCostModel.zero()` class method creates zero-cost model for testing
 - `SignalBacktest` equity_curve has length n (not n+1) — initial capital is the first element scaled by first period return
+- `HAS_RUST` is checked at import time — if Rust extension not compiled, all functions silently fall back to Python
+- `maturin develop --release` must be re-run after any Rust source changes
+- `BatchPredictor` accesses `_model._net`, `_model._device`, `_model._parse_x()` — tightly coupled to WaveletGPT internals
+- `torch.autocast` with `enabled=False` is a complete no-op — safe to always wrap
+- `MMapSequenceDataset` uses `mmap_mode='r'` (read-only) — cannot accidentally modify dataset files
+- AMP only activates on CUDA devices; on CPU, `use_amp=True` is silently ignored
 
 ## Testing
 
 ```bash
-pytest tests/ -q                                          # full suite, 349 tests (~9s GPU)
+pytest tests/ -q                                          # full suite, 391 tests (~9s GPU)
 pytest tests/unit/ -q                                     # unit only (~5s)
-pytest tests/unit/test_wavelet_gpt.py -v                  # GPU model tests
+pytest tests/unit/test_wavelet_gpt.py -v                  # GPU model tests (incl. AMP)
 pytest tests/unit/test_experiment_runner.py -v             # experiment framework tests
 pytest tests/unit/test_signal_backtest.py tests/unit/test_signal_generator.py -v  # signal tests
 pytest tests/integration/test_signal_pipeline.py -v       # signal pipeline integration
+pytest tests/unit/test_rust_acceleration.py -v             # Rust vs Python equivalence
+pytest tests/unit/test_batch_inference.py -v               # batch inference tests
+pytest tests/unit/test_mmap_dataset.py -v                  # memory-mapped dataset tests
+pytest tests/integration/test_performance.py -v            # performance benchmarks
 pytest tests/ --cov=wavecast --cov-report=term-missing    # coverage
 ruff check src/ tests/                                    # lint
+maturin develop --release                                 # rebuild Rust extension
 ```
 
 ## Benchmarks (RTX 2060 SUPER)
 
-- Full test suite: 349 tests in 9s (was 2m20s CPU-only before GPU)
-- WaveletGPT tests: ~5s
+- Full test suite: 391 tests in 9s (was 2m20s CPU-only before GPU)
+- WaveletGPT tests: ~5s (incl. AMP and mmap tests)
 - WaveletGPT training (161K-600K params, 80 epochs): 4-10s depending on architecture
-- SAX+BoW+TF-IDF on 7 assets x 2000 points: <1s
+- SAX+BoW+TF-IDF on 7 assets x 2000 points: <1s (faster with Rust extension)
+- Rust `extract_words`: 100 iterations on 10K chars in <1s
 - Full 20-ticker experiment run (hourly, all levels): ~3-4 min
 - Phase 3 full experiment suite (78 runs): ~2.5 hours
 

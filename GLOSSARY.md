@@ -116,3 +116,33 @@ Quick reference for the domain-specific terms used throughout the codebase.
 | **Price reconstruction** | Inverse SAX → PAA → approximate price deltas. Maps predicted tokens back to approximate price movements. | `sax/reconstruction.py` |
 | **PriceReconstructionResult** | Dataclass containing reconstructed deltas, directions (+1/-1/0), confidence, and breakpoint info. | `sax/reconstruction.py` |
 | **Per-sector fine-tuning** | Training separate models per sector. Phase 4 proved this hurts ALL 6 sectors — cross-sector is definitively optimal. | `scripts/run_F6.py` |
+
+## Phase 5 Domain — Signals & Backtesting
+
+| Term | Definition | Where in code |
+|------|-----------|---------------|
+| **TradingSignal** | Single signal: direction (+1 buy, -1 sell, 0 hold), confidence (0-1), raw probability, token ID, horizon, ticker. | `signals/types.py` |
+| **SignalSeries** | Ordered list of TradingSignals for one ticker/horizon. Properties: directions, confidences, timestamps arrays. | `signals/types.py` |
+| **SignalGenerator** | Converts WaveletGPT softmax probabilities to trading signals via quartile aggregation. Configurable confidence threshold and temperature calibration. | `signals/generator.py` |
+| **Temperature scaling** | Post-hoc calibration: divide logits by T before softmax. T found by minimizing NLL on validation data. T<1 sharpens, T>1 softens distributions. | `signals/generator.py:calibrate` |
+| **PositionSizer** | Maps confidence to position size. Methods: fixed (constant), linear (confidence × max), Kelly (edge-based), fractional Kelly (0.5× Kelly). | `signals/position.py` |
+| **Kelly criterion** | Optimal bet size: f* = (p×b - q) / b, where p=win_rate, b=avg_win/avg_loss, q=1-p. Maximizes log-growth. | `signals/position.py:_kelly_size` |
+| **TransactionCostModel** | Models three cost types: commission (flat rate), spread (bid-ask in bps), slippage (market impact in bps). Direction changes double costs. | `signals/costs.py` |
+| **SignalBacktest** | Iterates signals with actual returns, applies position sizing and costs, computes equity curve and 16 risk metrics. | `signals/backtest.py` |
+| **TradeRecord** | Per-trade record: entry/exit timestamps, direction, position size, gross/net return, cost breakdown (commission, spread, slippage), confidence. | `signals/types.py` |
+| **Sortino ratio** | Like Sharpe but only penalizes downside deviation. Better for asymmetric return distributions. | `evaluation/metrics.py` |
+| **Calmar ratio** | Annualized return / max drawdown. Measures return per unit of worst-case loss. | `evaluation/metrics.py` |
+| **VaR / CVaR** | Value at Risk (5th percentile loss) / Conditional VaR (mean of losses beyond VaR). Tail risk measures. | `evaluation/metrics.py` |
+| **Expectancy** | Expected return per trade: win_rate × avg_win - loss_rate × avg_loss. Positive = profitable system. | `evaluation/metrics.py` |
+
+## Phase 6 Domain — Performance
+
+| Term | Definition | Where in code |
+|------|-----------|---------------|
+| **HAS_RUST** | Boolean flag indicating whether the Rust/PyO3 extension is compiled and available. Python fallbacks used when False. | `_rust.py` |
+| **maturin** | Build system for mixed Rust+Python packages. Replaced hatchling in Phase 6. `maturin develop --release` builds and installs. | `pyproject.toml` |
+| **AMP** | Automatic Mixed Precision. Uses float16 for forward pass, float32 for gradient accumulation. Speeds up training on CUDA GPUs. | `models/wavelet_gpt.py` |
+| **GradScaler** | Scales gradients to prevent underflow in float16. Paired with torch.autocast. No-op when AMP disabled. | `models/wavelet_gpt.py` |
+| **MMapSequenceDataset** | Memory-mapped dataset backed by .npy files. Zero-copy loading via numpy mmap_mode='r'. | `data/mmap_dataset.py` |
+| **BatchPredictor** | Streaming batch inference wrapper for WaveletGPT. Splits large arrays into chunks, uses torch.inference_mode(). | `models/batch_inference.py` |
+| **torch.inference_mode** | Stricter version of torch.no_grad(). Disables autograd tracking AND version counting for slightly better perf. | `models/batch_inference.py` |

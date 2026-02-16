@@ -65,7 +65,7 @@ Phase 3 experiments proved Pipeline 2 (SAX token prediction) dominates Pipeline 
 ```
 core (types, config, exceptions, universe)
   ↑
-data (sources, cache, preprocessing, storage)
+data (sources, cache, preprocessing, storage, mmap_dataset)
   ↑
 wavelets (dwt, cwt, reconstruction, features)
   ↑
@@ -73,23 +73,27 @@ wavelets (dwt, cwt, reconstruction, features)
 │     ↑
 │     dtw (matching, similarity, subsequence, shape_dtw)
 │
-├── sax (paa, sax, bow, reconstruction)
+├── sax (paa, sax, bow ←[Rust], reconstruction)
 │     ↑
-│     tokenizer (vocabulary, tokenizer, dataset)
+│     tokenizer (vocabulary ←[Rust], tokenizer, dataset)
 │
 └── fractal (hurst, mfdfa, self_similarity, regime)
 
 features (pipeline: wavelet + shapelet + fractal + market + sax)
   ↑
-models (wavelet_lstm, wavelet_gpt, gradient_boost, ensemble, registry)
+models (wavelet_lstm, wavelet_gpt [AMP], gradient_boost, ensemble, registry, batch_inference)
   ↑
 evaluation (metrics, backtest, token_eval, reporting)
   ↑
+├── signals (generator, backtest, position, costs, types, config)
+│
 ├── pipeline (stages, runner, library_builder, token_pipeline)
 │
 └── experiments (config, result, splitter, runner, metrics, storage, hpo)
       ↑
-cli (app, commands/* incl. experiment)
+_rust.py (Rust/PyO3 fallback wrapper)
+      ↑
+cli (app, commands/* incl. experiment, signal)
 ```
 
 ## Key Design Decisions
@@ -193,11 +197,24 @@ Input: [token_ids (B, L), level_ids (B,), sector_ids (B,)]
 - Per-sector fine-tuning: hurts ALL 6 sectors — cross-sector definitively confirmed
 - RTX 2060 SUPER handles 600K params comfortably (10s training for 80 epochs)
 
-### Future (Phase 5+ — larger universe + sub-hourly)
-- 50+ assets, sub-hourly intervals (15m, 5m)
-- Signal generation: token predictions → trading signals → backtesting with costs
-- May need: gradient checkpointing, mixed precision (fp16) for larger universe
-- RTX 2060 SUPER 8GB should handle up to ~1M params comfortably
+### Phase 5 (Signal Generation — complete)
+- SignalGenerator converts softmax probabilities → trading signals (direction + confidence)
+- SignalBacktest with TransactionCostModel and PositionSizer (Kelly, fractional Kelly)
+- 16 risk metrics: Sharpe, Sortino, Calmar, VaR, CVaR, win rate, expectancy, etc.
+- Per-trade records with cost breakdown (commission, spread, slippage)
+
+### Phase 6 (Performance — complete)
+- Rust/PyO3 extension: 5 hot-path functions accelerated (extract_words, build_bow, encode_batch, etc.)
+- AMP mixed-precision: torch.autocast + GradScaler in WaveletGPT — no-op on CPU
+- MMapSequenceDataset: zero-copy .npy loading for large datasets
+- BatchPredictor: streaming batch inference with torch.inference_mode()
+- Build: maturin (Rust 1.93), Python fallback when Rust unavailable
+
+### Future (Phase 7+ — multi-timeframe + forward testing)
+- Paper trading forward test on live hourly data
+- Sub-hourly intervals (15m, 5m) from Massive.com
+- May need: gradient checkpointing for larger universe
+- RTX 2060 SUPER 8GB handles 600K params comfortably; can scale to ~1M
 
 ## File Organization Principles
 

@@ -79,31 +79,41 @@ Multi-horizon prediction, Optuna HPO, expanding window validation, price reconst
 - **Per-sector fine-tuning hurts ALL sectors**: universal cross-sector model is definitively optimal (resolves Phase 3 C3 inconclusive result for commodity ETFs)
 - **Expanding window validation**: results robust across multiple evaluation windows
 
+### Phase 5: Signal Generation & Backtesting (v0.5.0)
+Token predictions to trading signals with realistic transaction costs and risk metrics.
+
+- [x] SignalGenerator: softmax probabilities → direction (+1/-1/0) + confidence via quartile aggregation
+- [x] Temperature scaling calibration via NLL minimization on validation data
+- [x] PositionSizer: fixed, linear, Kelly, fractional Kelly (0.5× Kelly with rolling lookback)
+- [x] TransactionCostModel: commission + spread (bps) + slippage (bps); direction changes double costs
+- [x] SignalBacktest: per-trade records with entry/exit timestamps, gross/net returns, cost breakdown
+- [x] 16 risk metrics: Sharpe, Sortino, Calmar, max drawdown, profit factor, VaR, CVaR, win rate, avg win/loss ratio, expectancy, tail ratio, total/annualized return, volatility, num trades, avg trade return
+- [x] CLI: `wavecast signal generate`, `wavecast signal backtest`, `wavecast signal calibrate`
+- [x] Signal reporting: formatted text report with metrics + per-trade breakdown
+- [x] 349 tests passing (46 new)
+
+### Phase 6: Performance Optimization (v0.6.0)
+Rust/PyO3 acceleration, AMP mixed-precision, memory-mapped datasets, batch inference.
+
+- [x] Rust/PyO3 extension crate (`rust/`): `extract_words`, `build_bow`, `build_corpus_tfidf`, `encode_batch`, `build_sliding_windows`
+- [x] Python fallback wrapper (`_rust.py`) — graceful degradation when Rust not compiled
+- [x] Build system migration: hatchling → maturin (supports mixed Rust+Python packages)
+- [x] `sax/bow.py` and `tokenizer/vocabulary.py` delegate to Rust when `HAS_RUST=True`
+- [x] AMP mixed-precision: `torch.autocast` + `GradScaler` in WaveletGPT fit/predict — no-op on CPU
+- [x] MMapSequenceDataset: zero-copy `.npy` loading via `np.load(mmap_mode='r')`
+- [x] BatchPredictor: streaming batch inference with `torch.inference_mode()`, configurable batch_size
+- [x] CLI: `--batch-size` and `--use-amp` flags on signal backtest command
+- [x] 391 tests passing (42 new)
+
 ## Current Focus
 
-Phase 4 is complete. Next priority is Phase 5 (signal generation & backtesting).
+Phases 1-6 complete. The library now has a full pipeline from raw data through signal generation, with Rust acceleration and GPU optimization. Next priority is forward testing under paper trading conditions.
 
 ## Future Phases
 
-### Phase 5: Signal Generation & Backtesting
-- [ ] Token predictions → directional signals (buy/sell/hold)
-- [ ] Confidence calibration (softmax probabilities → position sizing)
-- [ ] P2-only signal pipeline (Phase 3 proved no ensemble benefit — P1 can be deprecated)
-- [ ] Walk-forward backtesting with transaction costs, bid-ask spreads, slippage
-- [ ] Risk metrics: max drawdown, Calmar ratio, tail risk
-- [ ] Additional asset classes: international equities, fixed income, higher-frequency data
-
-### Phase 6: Performance Optimization
-- [ ] Rust acceleration via PyO3:
-  - SAX word extraction (sliding window string ops)
-  - Bag-of-Words counting (hash map accumulation)
-  - Vocabulary encoding (batch string → int lookup)
-  - Sequence dataset building (sliding window array construction)
-- [ ] Mixed precision training (fp16) for larger models
-- [ ] Data loading optimization (memory-mapped datasets)
-- [ ] Batch inference for real-time signal generation
-
-### Phase 7: Multi-Timeframe
+### Phase 7: Multi-Timeframe & Forward Testing
+- [ ] Paper trading forward test: run signal pipeline on live hourly data, log predictions vs actual outcomes
+- [ ] Forward test metrics dashboard: track cumulative accuracy, PnL, drawdown over time
 - [ ] Sub-hourly intervals (15m, 5m) from Massive.com (hourly already validated in Phase 3)
 - [ ] Timeframe-aware SAX (different params per interval)
 - [ ] Hierarchical model: hourly predictions inform sub-hourly context
@@ -111,8 +121,8 @@ Phase 4 is complete. Next priority is Phase 5 (signal generation & backtesting).
 
 ### Phase 8: Production
 - [ ] FastAPI service for real-time predictions
-- [ ] Streamlit dashboard for visualization
-- [ ] Scheduled retraining pipeline
+- [ ] Streamlit dashboard for visualization and forward test monitoring
+- [ ] Scheduled retraining pipeline (periodic re-fit on new data)
 - [ ] Model versioning + A/B testing
 - [ ] Alert system for regime changes
 - [ ] Docker deployment
@@ -127,20 +137,23 @@ Phase 4 is complete. Next priority is Phase 5 (signal generation & backtesting).
 6. **Regime dependence**: **Remarkably consistent across regimes.** 82.7% overall, mean-reverting slightly best (83.4%), trending uncertain (81.8% but wide CI due to only 55 samples). Beats persistence baseline in all regimes (+5-11%).
 7. **Ensemble value**: **No benefit.** P2 (WaveletGPT on hourly) massively outperforms P1 (LSTM+XGB on daily) — 82-91% vs 51-57% directional accuracy. Combining them hurts. Error correlation near-zero but P1 signal too weak to contribute.
 
-## Open Research Questions (Phase 5+)
+## Open Research Questions
 
 1. ~~**n_segments sensitivity**~~: **Answered by F4**: n_segments=512 optimal (was 256). Higher resolution helps.
 2. ~~**word_length sensitivity**~~: **Answered by F4**: word_length=4 confirmed optimal via Optuna.
 3. ~~**Architecture search**~~: **Answered by F5**: embed_dim=128, 6 layers, dropout=0.2 (larger model preferred).
 4. ~~**Per-sector fine-tuning**~~: **Answered by F6**: Hurts ALL 6 sectors. Cross-sector definitively confirmed.
 5. ~~**Temporal stability**~~: **Answered by D3**: Yes — 60.8% token acc (vs 63.0% on 2024), 95.8% dir acc (vs 99.7%).
-6. **Multi-horizon utility**: h=1-2 useful for trading signals. h=4+ only useful for directional bias, not token-level prediction.
-7. **Signal-to-PnL gap**: High directional accuracy does not guarantee profitability. Transaction costs, position sizing, and slippage need investigation.
+6. ~~**Multi-horizon utility**~~: **Answered by Phase 4**: h=1-2 useful for trading signals. h=4+ only useful for directional bias, not token-level prediction.
+7. ~~**Signal-to-PnL gap**~~: **Addressed by Phase 5**: SignalGenerator + SignalBacktest with transaction costs, position sizing (Kelly), and 16 risk metrics. Need forward testing to validate on live data.
+8. **Forward test validation**: Does backtested signal quality hold up on truly live, unseen data? Paper trading will answer this.
+9. **Sub-hourly resolution**: Does 15m/5m data improve h=1 signal quality, or does noise dominate?
+10. **Regime-adaptive sizing**: Should position sizing adjust based on detected market regime (trending vs mean-reverting)?
 
 ## Non-Goals (Explicit)
 
 - **High-frequency trading**: WaveCast targets daily/hourly, not microsecond latency
 - **Order execution**: WaveCast generates signals, not orders
-- **Live trading integration**: No broker API integration planned
+- **Broker integration**: No live broker API — forward testing via paper trading only
 - **Large language model scale**: WaveletGPT stays under 1M params — this is a specialized micro-model
 - **General time series**: Optimized for financial data, not weather/medical/industrial
