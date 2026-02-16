@@ -20,7 +20,7 @@ class ForwardTestConfig(BaseSettings):
     tickers: list[str] = Field(default_factory=list)
     intervals: list[str] = Field(default_factory=lambda: ["1h"])
     horizons: list[int] = Field(default_factory=lambda: [1])
-    lookback_bars: int = 200
+    lookback_bars: int = 300
     dwt_levels: list[int] = Field(default_factory=lambda: [1, 2, 5])
     sax: SAXConfig = Field(default_factory=SAXConfig)
     signal: SignalConfig = Field(default_factory=SignalConfig)

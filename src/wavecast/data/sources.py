@@ -286,8 +286,14 @@ def fetch_latest_bars(
             f"Supported: {list(_INTERVAL_TO_TIMESPAN.keys())}"
         )
 
-    # Buffer of 1.5x handles weekends, holidays, trading gaps
-    total_hours = n_bars * hours_per_bar * 1.5
+    # For intraday intervals, account for limited trading hours (~7h/day, 5d/week).
+    # Stocks trade ~7 hours/day on 5 of 7 calendar days, so each trading-hour bar
+    # corresponds to ~24/7 * 7/5 ≈ 4.8 calendar hours. Use 5x buffer for safety.
+    if hours_per_bar < 24:
+        buffer_multiplier = 5.0
+    else:
+        buffer_multiplier = 1.5
+    total_hours = n_bars * hours_per_bar * buffer_multiplier
     start = (datetime.now() - timedelta(hours=total_hours)).strftime("%Y-%m-%d")
     end = datetime.now().strftime("%Y-%m-%d")
 

@@ -17,7 +17,7 @@ def run(
     tickers: str = typer.Option(..., help="Comma-separated ticker symbols"),
     interval: str = typer.Option("1h", help="Data interval"),
     test_name: str = typer.Option("default", help="Test name for tracking"),
-    lookback_bars: int = typer.Option(200, help="Number of lookback bars"),
+    lookback_bars: int = typer.Option(300, help="Number of lookback bars"),
     log_dir: str = typer.Option("", help="Log directory (default: ~/.wavecast/forward_tests)"),
 ) -> None:
     """Run one forward test cycle: fetch, resolve, predict, log."""

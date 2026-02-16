@@ -28,7 +28,7 @@ def _make_ohlcv(n: int = 300) -> pd.DataFrame:
 
 class TestFetchLatestBars:
     def test_hourly_start_date(self) -> None:
-        """Start date should be approximately n_bars * 1.5 hours ago for 1h."""
+        """Start date should use 5x buffer for intraday intervals."""
         with patch("wavecast.data.sources.fetch_massive_ohlcv") as mock_fetch:
             mock_fetch.return_value = _make_ohlcv(300)
 

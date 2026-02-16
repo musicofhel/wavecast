@@ -14,7 +14,7 @@ def test_defaults():
     assert config.tickers == []
     assert config.intervals == ["1h"]
     assert config.horizons == [1]
-    assert config.lookback_bars == 200
+    assert config.lookback_bars == 300
     assert config.dwt_levels == [1, 2, 5]
     assert config.sax.n_segments == 256
     assert config.signal.confidence_threshold == 0.0

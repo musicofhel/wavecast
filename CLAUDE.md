@@ -99,7 +99,7 @@ fetch_latest_bars → resolve pending → DWT/SAX/tokenize → WaveletGPT.predic
 - Per-ticker and per-interval metric breakdowns in `ForwardTestSummary`
 - Text + JSON report generation via `generate_forward_report()` / `export_forward_json()`
 - Storage: `~/.wavecast/forward_tests/{test_name}/predictions.jsonl`
-- `fetch_latest_bars()`: fresh API fetch with 1.5x buffer for gaps, no Parquet cache
+- `fetch_latest_bars()`: fresh API fetch, 5x buffer for intraday (trading hours), 1.5x for daily+, no Parquet cache
 
 ### Performance Optimization (Phase 6)
 - **Rust/PyO3 acceleration**: `extract_words`, `build_bow`, `build_corpus_tfidf`, `encode_batch`, `build_sliding_windows` — compiled Rust with Python fallback (`HAS_RUST` flag)
@@ -311,7 +311,8 @@ WaveCastError
 - `ForwardTestRunner._build_pipeline_context()` reuses the exact DWT→SAX→tokenize pipeline from `ExperimentRunner._run_on_split()` but with pre-loaded vocabulary (no vocab rebuilding)
 - `ForwardTestRunner` caches model + vocab on first `run_once()` call — subsequent calls within same process reuse them
 - `ForwardTestRunner` accesses `model._config["context_length"]` to match the trained model's context length
-- `fetch_latest_bars()` always fetches fresh (no cache), uses 1.5x time buffer to handle weekends/holidays
+- `fetch_latest_bars()` always fetches fresh (no cache), uses 5x buffer for intraday intervals (only ~7 trading hours/day, 5 days/week), 1.5x for daily+
+- DWT level 5 with db4 requires minimum ~224 data points — default lookback_bars is 300 to ensure enough data after gap filtering
 - Forward test CLI `report` command uses `--format` flag but `fmt` parameter name internally to avoid shadowing Python builtin
 
 ## Testing
