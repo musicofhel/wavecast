@@ -63,9 +63,42 @@ DEFAULT_UNIVERSE = Universe(
     ],
 )
 
+PHASE3_UNIVERSE = Universe(
+    name="phase3",
+    assets=[
+        # Tech (5)
+        AssetSpec("AAPL", "Apple", AssetClass.EQUITY),
+        AssetSpec("MSFT", "Microsoft", AssetClass.EQUITY),
+        AssetSpec("GOOGL", "Alphabet", AssetClass.EQUITY),
+        AssetSpec("AMZN", "Amazon", AssetClass.EQUITY),
+        AssetSpec("NVDA", "NVIDIA", AssetClass.EQUITY),
+        # Finance (3)
+        AssetSpec("JPM", "JPMorgan Chase", AssetClass.EQUITY),
+        AssetSpec("GS", "Goldman Sachs", AssetClass.EQUITY),
+        AssetSpec("BAC", "Bank of America", AssetClass.EQUITY),
+        # Energy (3)
+        AssetSpec("XOM", "Exxon Mobil", AssetClass.EQUITY),
+        AssetSpec("CVX", "Chevron", AssetClass.EQUITY),
+        AssetSpec("COP", "ConocoPhillips", AssetClass.EQUITY),
+        # Healthcare (3)
+        AssetSpec("JNJ", "Johnson & Johnson", AssetClass.EQUITY),
+        AssetSpec("UNH", "UnitedHealth", AssetClass.EQUITY),
+        AssetSpec("PFE", "Pfizer", AssetClass.EQUITY),
+        # Broad ETFs (2)
+        AssetSpec("SPY", "S&P 500 ETF", AssetClass.EQUITY),
+        AssetSpec("QQQ", "Nasdaq 100 ETF", AssetClass.EQUITY),
+        # Commodity ETFs (4)
+        AssetSpec("GLD", "Gold ETF", AssetClass.COMMODITY),
+        AssetSpec("SLV", "Silver ETF", AssetClass.COMMODITY),
+        AssetSpec("USO", "Oil ETF", AssetClass.COMMODITY),
+        AssetSpec("UNG", "Natural Gas ETF", AssetClass.COMMODITY),
+    ],
+)
+
 
 _UNIVERSES: dict[str, Universe] = {
     "default": DEFAULT_UNIVERSE,
+    "phase3": PHASE3_UNIVERSE,
 }
 
 

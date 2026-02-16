@@ -3,7 +3,13 @@
 import pytest
 
 from wavecast.core.types import AssetClass
-from wavecast.core.universe import DEFAULT_UNIVERSE, AssetSpec, Universe, get_universe
+from wavecast.core.universe import (
+    DEFAULT_UNIVERSE,
+    PHASE3_UNIVERSE,
+    AssetSpec,
+    Universe,
+    get_universe,
+)
 
 
 def test_default_universe_size():
@@ -43,6 +49,11 @@ def test_get_universe_default():
     assert u is DEFAULT_UNIVERSE
 
 
+def test_get_universe_phase3():
+    u = get_universe("phase3")
+    assert u is PHASE3_UNIVERSE
+
+
 def test_get_universe_unknown():
     with pytest.raises(ValueError, match="Unknown universe"):
         get_universe("nonexistent")
@@ -58,3 +69,21 @@ def test_custom_universe():
     )
     assert len(u) == 2
     assert u.tickers == ["T1", "T2"]
+
+
+def test_phase3_universe_size():
+    assert len(PHASE3_UNIVERSE) == 20
+
+
+def test_phase3_universe_sectors():
+    equities = PHASE3_UNIVERSE.by_class(AssetClass.EQUITY)
+    commodities = PHASE3_UNIVERSE.by_class(AssetClass.COMMODITY)
+    assert len(equities) == 16
+    assert len(commodities) == 4
+
+
+def test_phase3_universe_tickers():
+    tickers = PHASE3_UNIVERSE.tickers
+    for t in ["AAPL", "NVDA", "GS", "BAC", "CVX", "COP", "JNJ", "UNH", "PFE"]:
+        assert t in tickers
+    assert "X:BTCUSD" not in tickers

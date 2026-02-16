@@ -30,42 +30,55 @@
 - [x] 167 tests passing (79 new)
 - [x] Synthetic validation: 48.4% token acc, 87.7% directional acc
 
+### Phase 3: Real Data Validation & Research Experiments (v0.3.0 — in progress)
+Connected to Massive.com API, ran 78 experiments across 7 research questions on 20 US assets with hourly bars.
+
+- [x] Fetch 5-year hourly+daily data for PHASE3_UNIVERSE (20 US assets, 5 sectors)
+- [x] Experiment framework: ExperimentConfig, ExperimentResult, ExperimentRunner, walk-forward splitter
+- [x] Walk-forward evaluation (train 2021-2023, test 2024) with bootstrap 95% CIs
+- [x] Three baselines: most-frequent-token, persistence, momentum
+- [x] C1: SAX alphabet sweep → optimal alphabet_size=7
+- [x] C2: DWT level contribution → optimal levels=[1,2,5], levels 3&4 are noise
+- [x] C3: Cross-sector transfer → multi-sector training helps 4/6 sectors
+- [x] C4: Vocabulary saturation → natural vocab 83 tokens, fully saturated
+- [x] C5: Context length sweep → context=16 optimal, 64 hurts
+- [x] C6: Regime dependence → consistent 82.7% across regimes, +10.3% over persistence
+- [x] C7: Ensemble comparison → P2 dominates P1, no ensemble benefit
+- [x] 219 tests passing (52 new experiment framework tests)
+- [ ] D1-D4: Final model training + held-out 2025 evaluation + results report
+- [ ] E1-E3: Integration (update universe, configs, docs)
+
+### Phase 3 Results vs Success Criteria
+- Token accuracy ~56-63% on real data (target was >30%) — **exceeded**
+- Directional accuracy ~83% (target was >55%) — **exceeded**
+- All 5 sectors show above-random prediction — **exceeded** (target was 2+ sectors)
+- Multi-level [1,2,5] outperforms single-level — **confirmed** (levels 3&4 removal improved accuracy)
+
 ## Current Focus
 
-### Phase 3: Real Data Validation
-Connect to Massive.com API and validate on actual market data.
-
-**Goal**: Prove the SAX → WaveletGPT pipeline works on real financial data with multi-level DWT decomposition across the full 19-asset universe.
-
-- [ ] Fetch 5-year daily data for DEFAULT_UNIVERSE (19 assets)
-- [ ] Multi-level SAX: run SAX on each DWT level (5 levels × 19 assets)
-- [ ] Build real vocabulary from actual market data
-- [ ] Train WaveletGPT on real multi-level, multi-asset token sequences
-- [ ] Walk-forward evaluation (train on 2019-2023, test on 2024-2025)
-- [ ] Compare: single-level vs multi-level SAX accuracy
-- [ ] Compare: per-asset vs cross-asset training
-- [ ] Cross-asset similarity analysis (TF-IDF cosine) on real data
-- [ ] Report: which asset classes / wavelet levels are most predictable?
-
-### Phase 3 Success Criteria
-- Token accuracy > 30% on real data (vs <1% random baseline)
-- Directional accuracy > 55% (above coin flip)
-- At least 2 asset classes show consistent above-random prediction
-- Multi-level SAX outperforms single-level
+### Phase 3 Remaining (Wave 3)
+- [ ] D1: Aggregate results → optimal config per sector
+- [ ] D2: Train final WaveletGPT on 2021-2024 with optimal config
+- [ ] D3: Held-out evaluation on 2025 data (true out-of-sample)
+- [ ] D4: Generate PHASE3_RESULTS.md (full report)
+- [ ] E1: Update universe to PHASE3_UNIVERSE as default
+- [ ] E2: Update default configs with optimal values
+- [ ] E3: Update docs with final findings
 
 ## Future Phases
 
 ### Phase 4: Hyperparameter Optimization
-- [ ] Optuna integration for SAX params (n_segments, alphabet_size, word_length)
+- [ ] Optuna for remaining fixed params: n_segments, word_length, word_stride
 - [ ] Optuna for WaveletGPT architecture (embed_dim, num_heads, num_layers)
 - [ ] Cross-validation strategy for financial time series (purged walk-forward)
-- [ ] Per-asset-class optimal configurations
-- [ ] Vocabulary size sensitivity analysis
+- [ ] Per-sector optimal configurations (Phase 3 showed broad ETFs differ from others)
+- [ ] Regime-conditional models (if Phase 3 C6 shows >10% variation — it didn't, so lower priority)
+- [ ] Multi-year rolling holdout for more robust evaluation
 
 ### Phase 5: Signal Generation
 - [ ] Token predictions → directional signals (buy/sell/hold)
 - [ ] Confidence calibration (softmax probabilities → position sizing)
-- [ ] Combine Pipeline 1 (ensemble) + Pipeline 2 (WaveletGPT) predictions
+- [ ] P2-only signal pipeline (Phase 3 proved no ensemble benefit)
 - [ ] Signal backtesting with transaction costs
 - [ ] Risk metrics: max drawdown, Calmar ratio, tail risk
 
@@ -80,9 +93,9 @@ Connect to Massive.com API and validate on actual market data.
 - [ ] Batch inference for real-time signal generation
 
 ### Phase 7: Multi-Timeframe
-- [ ] Intraday intervals (1h, 15m, 5m) from Massive.com
+- [ ] Sub-hourly intervals (15m, 5m) from Massive.com (hourly already validated in Phase 3)
 - [ ] Timeframe-aware SAX (different params per interval)
-- [ ] Hierarchical model: daily predictions inform intraday context
+- [ ] Hierarchical model: hourly predictions inform sub-hourly context
 - [ ] Streaming mode: online vocabulary updates, incremental training
 
 ### Phase 8: Production
@@ -93,17 +106,23 @@ Connect to Massive.com API and validate on actual market data.
 - [ ] Alert system for regime changes
 - [ ] Docker deployment
 
-## Research Questions
+## Research Questions — Answered (Phase 3)
 
-These are open questions that the real-data validation (Phase 3) should help answer:
+1. **Optimal SAX granularity**: **alphabet=7 is optimal.** Best directional accuracy across all sectors. Higher alphabets (9, 11) suffer from high UNK rates.
+2. **Level contribution**: **Levels [1,2,5] carry the signal.** Levels 3 and 4 are noise — removing them IMPROVES accuracy. Level 5 (coarsest) is the strongest single predictor (75.4%), level 1 (finest) second (59.6%).
+3. **Cross-sector transfer**: **Multi-sector training helps 4/6 sectors.** Finance benefits most (+3.8%). Broad ETFs and energy slightly prefer isolation. Single-asset models overfit (~711 samples for 161K params).
+4. **Vocabulary saturation**: **Natural vocab is only 83 tokens — fully saturated.** No pruning needed. min_freq=1 outperforms higher thresholds (rare words carry signal).
+5. **Context length**: **16 is the sweet spot.** 32 is marginal, 64 hurts (20% fewer training samples outweighs longer context). 8 is too short.
+6. **Regime dependence**: **Remarkably consistent across regimes.** 82.7% overall, mean-reverting slightly best (83.4%), trending uncertain (81.8% but wide CI due to only 55 samples). Beats persistence baseline in all regimes (+5-11%).
+7. **Ensemble value**: **No benefit.** P2 (WaveletGPT on hourly) massively outperforms P1 (LSTM+XGB on daily) — 82-91% vs 51-57% directional accuracy. Combining them hurts. Error correlation near-zero but P1 signal too weak to contribute.
 
-1. **Optimal SAX granularity**: Is alphabet_size=7 better than 5? Does it vary by asset class?
-2. **Level contribution**: Which DWT levels carry the most predictable SAX patterns? (Hypothesis: levels 2-4 for daily data)
-3. **Cross-asset transfer**: Does training on equities help predict crypto, or vice versa?
-4. **Vocabulary saturation**: At what point do more words stop helping? Is 200 enough or do we need 500+?
-5. **Context length**: 16 tokens worked for synthetic data. Does real data need 32 or 64?
-6. **Regime dependence**: Does WaveletGPT accuracy change during trending vs mean-reverting periods?
-7. **Ensemble value**: Does combining Pipeline 1 + Pipeline 2 beat either alone?
+## Open Research Questions (Phase 4+)
+
+1. **n_segments sensitivity**: Fixed at 256 for hourly — is this optimal? Interacts with alphabet_size.
+2. **word_length sensitivity**: Fixed at 4 — would 3 or 5 change the vocabulary characteristics?
+3. **Architecture search**: embed_dim=64, 4 heads, 3 layers held constant — room for improvement?
+4. **Per-sector fine-tuning**: Broad ETFs consistently outperform — would sector-specific heads help?
+5. **Temporal stability**: Does the 2024 test accuracy hold on 2025? (D3 will answer this)
 
 ## Non-Goals (Explicit)
 

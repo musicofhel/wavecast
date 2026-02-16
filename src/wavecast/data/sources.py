@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -12,6 +14,8 @@ from dotenv import load_dotenv
 
 from wavecast.core.exceptions import DataError, DataNotFoundError
 from wavecast.core.types import TimeSeries
+
+logger = logging.getLogger(__name__)
 
 # Load .env if not already loaded (covers notebooks, scripts, direct imports)
 load_dotenv()
@@ -177,6 +181,179 @@ def load_csv(
         interval="1d",
         column=column.lower(),
     )
+
+
+def fetch_massive_ohlcv(
+    ticker: str,
+    start: str | None = None,
+    end: str | None = None,
+    interval: str = "1d",
+) -> pd.DataFrame:
+    """Fetch full OHLCV data from Massive.com as a DataFrame.
+
+    Returns DataFrame with columns: timestamp, open, high, low, close, volume.
+    """
+    client = _get_massive_client()
+
+    if start is None:
+        start = (datetime.now() - timedelta(days=5 * 365)).strftime("%Y-%m-%d")
+    if end is None:
+        end = datetime.now().strftime("%Y-%m-%d")
+
+    timespan_info = _INTERVAL_TO_TIMESPAN.get(interval)
+    if timespan_info is None:
+        raise DataError(
+            f"Unsupported interval '{interval}'. "
+            f"Supported: {list(_INTERVAL_TO_TIMESPAN.keys())}"
+        )
+    timespan, multiplier = timespan_info
+
+    try:
+        aggs = []
+        for a in client.list_aggs(
+            ticker=ticker,
+            multiplier=multiplier,
+            timespan=timespan,
+            from_=start,
+            to=end,
+            limit=50000,
+        ):
+            aggs.append(a)
+    except Exception as e:
+        raise DataError(f"Massive API error for {ticker}: {e}") from e
+
+    if not aggs:
+        raise DataNotFoundError(
+            f"No data returned for ticker '{ticker}' "
+            f"(start={start}, end={end}, interval={interval})"
+        )
+
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(
+                [int(a.timestamp) for a in aggs], unit="ms", utc=True
+            ),
+            "open": [a.open for a in aggs],
+            "high": [a.high for a in aggs],
+            "low": [a.low for a in aggs],
+            "close": [a.close for a in aggs],
+            "volume": [a.volume for a in aggs],
+        }
+    )
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    return df
+
+
+def fetch_universe(
+    tickers: list[str],
+    start: str = "2021-02-01",
+    end: str = "2025-12-31",
+    intervals: list[str] | None = None,
+    cache_dir: Path | None = None,
+    rate_limit_pause: float = 12.5,
+    fallbacks: dict[str, str] | None = None,
+) -> dict[str, dict[str, pd.DataFrame]]:
+    """Fetch OHLCV data for multiple tickers and intervals, caching to Parquet.
+
+    Args:
+        tickers: List of ticker symbols.
+        start: Start date (YYYY-MM-DD).
+        end: End date (YYYY-MM-DD).
+        intervals: List of intervals to fetch (default: ['1h', '1d']).
+        cache_dir: Directory for Parquet cache (default: ~/.wavecast/cache).
+        rate_limit_pause: Seconds between API calls (Massive free tier: 5/min).
+        fallbacks: Mapping of ticker -> fallback ticker if primary fails.
+
+    Returns:
+        Nested dict: {ticker: {interval: DataFrame}}.
+    """
+    if intervals is None:
+        intervals = ["1h", "1d"]
+    if cache_dir is None:
+        cache_dir = Path.home() / ".wavecast" / "cache"
+    if fallbacks is None:
+        fallbacks = {}
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    results: dict[str, dict[str, pd.DataFrame]] = {}
+
+    for ticker in tickers:
+        results[ticker] = {}
+        for interval in intervals:
+            cache_path = cache_dir / f"{ticker}_{interval}_ohlcv.parquet"
+
+            if cache_path.exists():
+                logger.info("Cache hit: %s %s", ticker, interval)
+                results[ticker][interval] = pd.read_parquet(cache_path)
+                continue
+
+            actual_ticker = ticker
+            try:
+                logger.info("Fetching %s %s ...", ticker, interval)
+                df = fetch_massive_ohlcv(
+                    ticker, start=start, end=end, interval=interval
+                )
+            except (DataError, DataNotFoundError) as e:
+                if ticker in fallbacks:
+                    actual_ticker = fallbacks[ticker]
+                    logger.warning(
+                        "%s failed (%s), trying fallback %s",
+                        ticker,
+                        e,
+                        actual_ticker,
+                    )
+                    df = fetch_massive_ohlcv(
+                        actual_ticker, start=start, end=end, interval=interval
+                    )
+                else:
+                    raise
+
+            # Forward-fill missing bars within trading sessions only
+            if interval == "1h":
+                df = _ffill_hourly(df)
+
+            df.to_parquet(cache_path, index=False)
+            results[ticker][interval] = df
+            logger.info(
+                "  %s %s: %d bars (saved to %s)",
+                actual_ticker,
+                interval,
+                len(df),
+                cache_path.name,
+            )
+            time.sleep(rate_limit_pause)
+
+    return results
+
+
+def _ffill_hourly(df: pd.DataFrame) -> pd.DataFrame:
+    """Forward-fill gaps within regular trading hours (9:30-16:00 ET).
+
+    Only fills gaps that fall within trading hours on trading days.
+    Does not create bars outside the existing date range.
+    """
+    if df.empty:
+        return df
+
+    # Ensure UTC timestamps
+    if df["timestamp"].dt.tz is None:
+        df["timestamp"] = df["timestamp"].dt.tz_localize("UTC")
+
+    # Convert to Eastern for trading hour detection
+    ts_et = df["timestamp"].dt.tz_convert("US/Eastern")
+
+    # Trading hours: 9:30 to 16:00 ET (Massive uses bar open time, so 9:00 to 15:00)
+    trading_mask = (ts_et.dt.hour >= 9) & (ts_et.dt.hour <= 15)
+
+    # For commodity ETFs and extended-hours data, keep all rows
+    # Only filter if we detect regular equity trading pattern
+    if trading_mask.sum() > 0.5 * len(df):
+        # Primarily regular-hours data, forward-fill within trading hours
+        df = df.set_index("timestamp")
+        df = df.ffill(limit=2)  # Fill up to 2 consecutive missing bars
+        df = df.reset_index()
+
+    return df
 
 
 def load_parquet(

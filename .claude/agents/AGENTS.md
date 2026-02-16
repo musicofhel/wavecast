@@ -28,6 +28,12 @@ Agent definitions for parallel development using Claude Code teams + beads task 
 **Skills**: PyTorch (WaveletGPT, WaveletLSTM), XGBoost, ensemble methods, walk-forward backtesting, token eval
 **When to use**: Model architecture changes, hyperparameter tuning, new evaluation metrics, GPU optimization
 
+### experiment-agent
+**Domain**: Experiment framework, research experiments
+**Owns**: `src/wavecast/experiments/`, `scripts/run_C*.py`
+**Skills**: ExperimentConfig/Result, ExperimentRunner, walk-forward splitting, bootstrap CIs, baseline computation, results storage
+**When to use**: Running new experiments, adding metrics, modifying the experiment pipeline
+
 ### pipeline-agent
 **Domain**: End-to-end orchestration, CLI, library building
 **Owns**: `src/wavecast/pipeline/`, `src/wavecast/cli/`
@@ -50,6 +56,15 @@ model-agent  → model/evaluation work
 pipeline-agent → integration/CLI work
 ```
 
+### 3-Agent Experiment Wave (Phase 3 pattern)
+For running research experiments in parallel:
+```
+Wave 1 (foundation):  data-agent | framework-agent | infra-agent
+Wave 2 (experiments): agent-1 (C1→C2→C3) | agent-2 (C4→C5→C6) | agent-3 (C7)
+Wave 3 (finalize):    agent-1 (D1→D4) | agent-2 (E1→E3)
+```
+Dependency chains managed via beads (`br dep add`). Agents poll for predecessor completion.
+
 ### 2-Agent Research
 For exploration and prototyping:
 ```
@@ -57,10 +72,10 @@ data-agent   → data fetching/analysis
 model-agent  → model experiments
 ```
 
-### Full Team (5 agents)
+### Full Team (6 agents)
 For major phase implementations:
 ```
-data-agent → wavelet-agent → sax-agent → model-agent → pipeline-agent
+data-agent → wavelet-agent → sax-agent → model-agent → experiment-agent → pipeline-agent
 ```
 With dependency chains managed via beads (`br dep add`).
 
@@ -69,12 +84,13 @@ With dependency chains managed via beads (`br dep add`).
 Use beads (`br`) for agent task coordination:
 ```bash
 br init                          # create workspace (once)
-br add -t "Task title"           # add task
+br create "Task title"           # create task
 br dep add CHILD PARENT          # set dependency
-br start ID                      # claim task
+br update ID -s in_progress      # claim task
 br close ID                      # mark done
-br ls                            # list all
-br ls --open                     # list open tasks
+br list                          # list all
+br ready                         # list unblocked tasks
+br blocked                       # list blocked tasks
 ```
 
 ## Conventions

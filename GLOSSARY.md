@@ -80,6 +80,23 @@ Quick reference for the domain-specific terms used throughout the codebase.
 |------|-----------|---------------|
 | **Token accuracy** | Exact match rate: predicted token == actual next token. | `evaluation/token_eval.py` |
 | **Top-3 accuracy** | Rate at which the correct token is in the top 3 predictions by probability. | `evaluation/token_eval.py` |
-| **Directional accuracy** | Whether the predicted token implies the same price direction as the actual. The trading-relevant metric. | `evaluation/token_eval.py` |
+| **Directional accuracy** | Whether the predicted token implies the same price direction as the actual. Level-0 only for multi-level SAX. | `experiments/metrics.py` |
 | **Walk-forward** | Train on window [0, T], test on [T, T+k], slide forward. Prevents look-ahead bias in financial backtests. | `evaluation/backtest.py` |
 | **Sharpe ratio** | Risk-adjusted return: mean(returns) / std(returns) × √252. Higher = better risk/reward. | `evaluation/metrics.py` |
+
+## Experiment Domain
+
+| Term | Definition | Where in code |
+|------|-----------|---------------|
+| **ExperimentConfig** | Complete specification of an experiment: tickers, interval, SAX/model params, split dates. | `experiments/config.py` |
+| **ExperimentResult** | Full output of an experiment: metrics with CIs, baselines, per-asset/sector/level breakdowns. | `experiments/result.py` |
+| **ExperimentRunner** | Orchestrates the full pipeline: load data → split → decompose → SAX → tokenize → train → evaluate. | `experiments/runner.py` |
+| **Walk-forward splitter** | Splits raw prices by date BEFORE any DWT/SAX transformation. Prevents normalization leakage. | `experiments/splitter.py` |
+| **Bootstrap CI** | 95% confidence interval via 1000 bootstrap resamples of test predictions. Quantifies uncertainty. | `experiments/metrics.py` |
+| **Persistence baseline** | Predict next token = last token in context window. Strong baseline for trending regimes. | `experiments/metrics.py` |
+| **Most-frequent baseline** | Always predict the mode of training tokens. Lowest-effort baseline. | `experiments/metrics.py` |
+| **Momentum baseline** | Predict same direction as majority direction in context window. Trading-oriented baseline. | `experiments/metrics.py` |
+| **Level-0 directional accuracy** | Directional accuracy computed on approximation level only. Detail levels represent oscillation, not direction. | `experiments/metrics.py` |
+| **UNK rate** | Fraction of test tokens that map to UNK (unseen in training vocabulary). High UNK = vocab too restrictive. | `experiments/result.py` |
+| **Ablation** | Removing one component (e.g., a DWT level) and measuring accuracy change. Used in C2 to identify noise levels. | `scripts/run_C2.py` |
+| **PHASE3_UNIVERSE** | 20 US assets across 5 sectors: tech, finance, energy, healthcare, broad/commodity ETFs. | `core/universe.py` |

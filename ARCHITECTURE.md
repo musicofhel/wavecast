@@ -85,9 +85,11 @@ models (wavelet_lstm, wavelet_gpt, gradient_boost, ensemble, registry)
   ↑
 evaluation (metrics, backtest, token_eval, reporting)
   ↑
-pipeline (stages, runner, library_builder, token_pipeline)
-  ↑
-cli (app, commands/*)
+├── pipeline (stages, runner, library_builder, token_pipeline)
+│
+└── experiments (config, result, splitter, runner, metrics, storage)
+      ↑
+cli (app, commands/* incl. experiment)
 ```
 
 ## Key Design Decisions
@@ -109,6 +111,15 @@ BoW/TF-IDF over SAX words gives a fixed-size feature vector per asset, enabling:
 - Cross-asset similarity (cosine distance between TF-IDF vectors)
 - Feature engineering (SAX features concatenated into FeatureVector for the ensemble)
 - Interpretable asset clustering (which assets have similar symbolic structure?)
+
+### Why levels [1,2,5] only? (Phase 3 finding)
+Level 5 (coarsest, ~32-day trends) is the strongest single predictor at 75.4% token accuracy. Level 1 (finest, ~2-day cycles) adds complementary high-frequency signal at 59.6%. Level 2 contributes marginally. Levels 3 and 4 are pure noise — removing them from the model actually improves accuracy by 1-2%. This suggests the mid-frequency bands carry overlapping information that confuses the transformer.
+
+### Why P2 over P1? (Phase 3 finding)
+Pipeline 1 (LSTM+XGBoost on daily features) achieves 51-57% directional accuracy on real data — barely above coin flip. Pipeline 2 (WaveletGPT on hourly SAX tokens) achieves 82-91%. The key advantage: hourly resolution gives P2 ~6.5x more training data, and the symbolic representation captures regime transitions that raw features miss. Combining P1+P2 in an ensemble actually hurts — P1's noise corrupts P2's strong signal.
+
+### Why split before transform?
+Walk-forward splitting must happen at the raw price level, before DWT decomposition or SAX transformation. If you decompose first and then split, the z-normalization statistics leak future information into the training set. Each split gets independently decomposed, normalized, and tokenized. The vocabulary is built from training data only — test sequences get UNK tokens for unseen words.
 
 ## Model Architecture: WaveletGPT
 
@@ -141,19 +152,20 @@ Input: [token_ids (B, L), level_ids (B,), asset_class_ids (B,)]
 
 ## Scaling Considerations
 
-### Current (Phase 2 — synthetic validation)
+### Phase 2 (synthetic validation)
 - 7 assets, 2000 points each, single wavelet level
 - 763 samples, 154-token vocabulary
 - Training: 3.9s on RTX 2060 SUPER
 
-### Target (Phase 3 — real data)
-- 19 assets (DEFAULT_UNIVERSE), 5+ years daily data (~1300 pts each)
-- 5 wavelet levels per asset = 5x token sequences per asset
-- Estimated: ~5000-15000 samples, ~300-500 token vocabulary
-- Training: ~30-60s on RTX 2060 SUPER (extrapolating from benchmarks)
+### Phase 3 (real data — current)
+- 20 US assets (PHASE3_UNIVERSE), 5-year hourly data (~4875 bars/asset)
+- 3 wavelet levels (1, 2, 5) per asset — levels 3&4 excluded as noise
+- 23,700 training samples, 83-token vocabulary (naturally saturated)
+- Training (full 20-asset run): ~3-4 min on RTX 2060 SUPER
+- Full experiment suite (78 runs): ~2.5 hours
 
-### Future (Phase 4+ — intraday + larger universe)
-- 50+ assets, intraday intervals (1h, 15m)
+### Future (Phase 4+ — larger universe + sub-hourly)
+- 50+ assets, sub-hourly intervals (15m, 5m)
 - Longer sequences → larger context windows
 - May need: gradient checkpointing, mixed precision (fp16), larger embed_dim
 - RTX 2060 SUPER 8GB should handle up to ~1M params comfortably
