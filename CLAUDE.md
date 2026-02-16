@@ -7,7 +7,7 @@ Wavelet-shapelet financial forecasting library with SAX tokenization and transfo
 ```bash
 cd ~/wavecast
 source .venv/bin/activate
-pytest tests/ -q          # 391 tests, ~9s on GPU
+pytest tests/ -q          # 424 tests, ~9s on GPU
 ruff check src/ tests/    # 0 errors
 maturin develop --release # build Rust extension (optional, Python fallback available)
 ```
@@ -39,18 +39,19 @@ src/wavecast/
   evaluation/   — metrics (16 risk metrics), walk-forward backtest, token prediction eval, signal reporting
   signals/      — SignalGenerator, SignalBacktest, PositionSizer, TransactionCostModel, signal types & config
   experiments/  — ExperimentConfig, ExperimentResult, Runner, Splitter, Metrics, Storage, HPO
+  forward/      — ForwardTestRunner, ForwardTestTracker, ForwardPrediction, report, config (paper trading)
   pipeline/     — stage orchestration, runner, library builder, token pipeline
-  cli/          — Typer CLI: data, discover, match, analyze, forecast, library, backtest, sax, tokenize, experiment, signal
+  cli/          — Typer CLI: data, discover, match, analyze, forecast, library, backtest, sax, tokenize, experiment, signal, forward
   viz/          — scalogram, shapelet gallery, DTW alignment, forecast, fractal plots
 rust/           — PyO3 extension crate (sax_words, bow, vocab, dataset acceleration)
 tests/
-  unit/         — 55 test files, 385 unit tests
-  integration/  — 3 integration tests (pipeline, signal pipeline, performance)
+  unit/         — 62 test files, 417 unit tests
+  integration/  — 4 integration tests (pipeline, signal pipeline, performance, forward pipeline)
   fixtures/     — deterministic generators (seed=42)
 scripts/        — experiment runners (run_C1-C7, run_D1_D4, run_F1/F4/F5/F6), fetch_phase3_universe.py
 ```
 
-~108 source files, 62 test files, 391 tests passing.
+~115 source files, 69 test files, 424 tests passing.
 
 ## Architecture: Two Pipelines
 
@@ -85,6 +86,20 @@ WaveletGPT.predict_proba() → SignalGenerator → PositionSizer → SignalBackt
 - Transaction costs: commission + spread (bps) + slippage (bps); direction changes double costs
 - 16 risk metrics: Sharpe, Sortino, Calmar, max drawdown, profit factor, VaR, CVaR, win rate, avg win/loss ratio, expectancy, tail ratio, total/annualized return, volatility, num trades, avg trade return
 - Per-trade records with entry/exit timestamps, gross/net returns, cost breakdown
+
+### Pipeline 4: Forward Testing (Phase 7)
+```
+fetch_latest_bars → resolve pending → DWT/SAX/tokenize → WaveletGPT.predict_proba() → SignalGenerator → log prediction
+```
+- Paper trading on live/recent data — no broker integration
+- `ForwardTestRunner.run_once()`: fetches latest bars, resolves prior predictions against actual prices, generates new predictions
+- Reuses exact pipeline from ExperimentRunner (DWT → SAX → vocabulary encode → sequence dataset)
+- Uses pre-trained model + vocabulary from disk (no retraining)
+- `ForwardTestTracker`: JSONL-based prediction logging, resolution, rolling metrics (accuracy, directional accuracy, PnL, max drawdown)
+- Per-ticker and per-interval metric breakdowns in `ForwardTestSummary`
+- Text + JSON report generation via `generate_forward_report()` / `export_forward_json()`
+- Storage: `~/.wavecast/forward_tests/{test_name}/predictions.jsonl`
+- `fetch_latest_bars()`: fresh API fetch with 1.5x buffer for gaps, no Parquet cache
 
 ### Performance Optimization (Phase 6)
 - **Rust/PyO3 acceleration**: `extract_words`, `build_bow`, `build_corpus_tfidf`, `encode_batch`, `build_sliding_windows` — compiled Rust with Python fallback (`HAS_RUST` flag)
@@ -154,6 +169,12 @@ from wavecast.evaluation.reporting import generate_signal_report
 from wavecast._rust import HAS_RUST  # True if Rust extension compiled
 from wavecast.data.mmap_dataset import MMapSequenceDataset
 from wavecast.models.batch_inference import BatchPredictor
+
+# Phase 7 Forward Testing
+from wavecast.forward import ForwardTestRunner, ForwardTestTracker, ForwardTestConfig
+from wavecast.forward import ForwardPrediction, ForwardTestSummary
+from wavecast.forward import generate_forward_report, export_forward_json
+from wavecast.data.sources import fetch_latest_bars
 ```
 
 ## CLI
@@ -189,6 +210,12 @@ wavecast sax reconstruct AAPL              # price reconstruction from SAX token
 wavecast signal generate MODEL_PATH TICKER --horizon 1 --confidence-threshold 0.5
 wavecast signal backtest MODEL_PATH TICKERS --train-end 2023-12-31 --test-start 2024-01-01 --position-method fractional_kelly
 wavecast signal calibrate MODEL_PATH TICKERS --validation-start 2024-01-01 --validation-end 2024-06-30
+
+# Phase 7 Forward Testing
+wavecast forward run --model-path ~/.wavecast/models/wavelet_gpt --vocab-path ~/.wavecast/models/vocabulary.json --tickers AAPL,MSFT,GOOG --interval 1h --test-name paper_v1
+wavecast forward status --test-name paper_v1
+wavecast forward report --test-name paper_v1 --format json --output report.json
+wavecast forward list
 ```
 
 ## Config System
@@ -210,6 +237,7 @@ Pydantic `BaseSettings` hierarchy in `core/config.py`:
 - `SignalBacktestConfig` — initial_capital + nested signal/position_sizing/costs configs
 - `ExperimentConfig` — full experiment specification (tickers, interval, SAX/model params, split dates)
 - `ExperimentResult` — metrics + CIs + baselines + per-asset/sector/level breakdowns
+- `ForwardTestConfig` — test_name, model_path, vocab_path, tickers, intervals, horizons, lookback_bars, dwt_levels, sax, signal, log_dir (standalone, not in WaveCastConfig)
 
 ## Type System
 
@@ -226,6 +254,10 @@ Signal dataclasses in `signals/types.py`:
 - `SignalSeries` (list[TradingSignal]; properties: directions, confidences, timestamps)
 - `TradeRecord` (entry/exit timestamps, direction, position_size, gross/net return, cost breakdown, confidence)
 - `SignalBacktestResult` (returns, positions, equity_curve, timestamps, trades, metrics dict, config dict)
+
+Forward dataclasses in `forward/types.py`:
+- `ForwardPrediction` (id, timestamp, target_timestamp, ticker, interval, horizon, predicted_direction, predicted_confidence, predicted_token; resolution fields: actual_return, actual_direction, correct, resolved_at)
+- `ForwardTestSummary` (test_name, start_time, tickers, intervals, prediction counts, accuracy, directional_accuracy, cumulative_pnl, max_drawdown, win_rate, per_ticker, per_interval)
 
 ## Exception Hierarchy
 
@@ -273,11 +305,19 @@ WaveCastError
 - `torch.autocast` with `enabled=False` is a complete no-op — safe to always wrap
 - `MMapSequenceDataset` uses `mmap_mode='r'` (read-only) — cannot accidentally modify dataset files
 - AMP only activates on CUDA devices; on CPU, `use_amp=True` is silently ignored
+- `ForwardTestConfig` is standalone (not nested in `WaveCastConfig`) to avoid circular imports — `forward.config` imports `SAXConfig` from `core.config`
+- `ForwardTestTracker` rewrites the full JSONL on resolution — file is small (hundreds of records), not a performance concern
+- `ForwardTestTracker.resolve_pending()` finds the closest price at/before prediction time and at/after target time — tolerant of timestamp misalignment
+- `ForwardTestRunner._build_pipeline_context()` reuses the exact DWT→SAX→tokenize pipeline from `ExperimentRunner._run_on_split()` but with pre-loaded vocabulary (no vocab rebuilding)
+- `ForwardTestRunner` caches model + vocab on first `run_once()` call — subsequent calls within same process reuse them
+- `ForwardTestRunner` accesses `model._config["context_length"]` to match the trained model's context length
+- `fetch_latest_bars()` always fetches fresh (no cache), uses 1.5x time buffer to handle weekends/holidays
+- Forward test CLI `report` command uses `--format` flag but `fmt` parameter name internally to avoid shadowing Python builtin
 
 ## Testing
 
 ```bash
-pytest tests/ -q                                          # full suite, 391 tests (~9s GPU)
+pytest tests/ -q                                          # full suite, 424 tests (~9s GPU)
 pytest tests/unit/ -q                                     # unit only (~5s)
 pytest tests/unit/test_wavelet_gpt.py -v                  # GPU model tests (incl. AMP)
 pytest tests/unit/test_experiment_runner.py -v             # experiment framework tests
@@ -287,6 +327,8 @@ pytest tests/unit/test_rust_acceleration.py -v             # Rust vs Python equi
 pytest tests/unit/test_batch_inference.py -v               # batch inference tests
 pytest tests/unit/test_mmap_dataset.py -v                  # memory-mapped dataset tests
 pytest tests/integration/test_performance.py -v            # performance benchmarks
+pytest tests/unit/test_forward_tracker.py tests/unit/test_forward_runner.py -v  # forward testing unit
+pytest tests/integration/test_forward_pipeline.py -v      # forward testing integration
 pytest tests/ --cov=wavecast --cov-report=term-missing    # coverage
 ruff check src/ tests/                                    # lint
 maturin develop --release                                 # rebuild Rust extension
@@ -294,7 +336,7 @@ maturin develop --release                                 # rebuild Rust extensi
 
 ## Benchmarks (RTX 2060 SUPER)
 
-- Full test suite: 391 tests in 9s (was 2m20s CPU-only before GPU)
+- Full test suite: 424 tests in 9s (was 2m20s CPU-only before GPU)
 - WaveletGPT tests: ~5s (incl. AMP and mmap tests)
 - WaveletGPT training (161K-600K params, 80 epochs): 4-10s depending on architecture
 - SAX+BoW+TF-IDF on 7 assets x 2000 points: <1s (faster with Rust extension)
