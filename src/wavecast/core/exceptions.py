@@ -45,5 +45,17 @@ class PipelineError(WaveCastError):
     """Error during pipeline execution."""
 
 
+class SAXError(WaveCastError):
+    """Error during SAX transformation."""
+
+
+class TokenizerError(WaveCastError):
+    """Error during tokenization."""
+
+
+class SequenceModelError(ModelError):
+    """Error during sequence model training or prediction."""
+
+
 class ConfigError(WaveCastError):
     """Configuration error."""

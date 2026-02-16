@@ -11,12 +11,14 @@ from wavecast.core.exceptions import ModelError
 from .base import BaseModel
 from .ensemble import EnsembleModel
 from .gradient_boost import GradientBoostModel
+from .wavelet_gpt import WaveletGPT
 from .wavelet_lstm import WaveletLSTM
 
 _MODEL_CLASSES: dict[str, type[BaseModel]] = {
     "gradient_boost": GradientBoostModel,
     "wavelet_lstm": WaveletLSTM,
     "ensemble": EnsembleModel,
+    "wavelet_gpt": WaveletGPT,
 }
 
 

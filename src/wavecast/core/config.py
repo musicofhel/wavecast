@@ -72,6 +72,37 @@ class BacktestConfig(BaseSettings):
     walk_forward_test: int = 21
 
 
+class SAXConfig(BaseSettings):
+    """SAX transformation settings."""
+
+    n_segments: int = 20
+    alphabet_size: int = 8
+    word_length: int = 4
+    word_stride: int = 1
+
+
+class TokenizerConfig(BaseSettings):
+    """Tokenizer settings."""
+
+    context_length: int = 32
+    min_word_freq: int = 2
+    max_vocab_size: int = 500
+
+
+class SequenceModelConfig(BaseSettings):
+    """Sequence model settings."""
+
+    context_length: int = 32
+    embed_dim: int = 64
+    num_heads: int = 4
+    num_layers: int = 3
+    dropout: float = 0.1
+    epochs: int = 50
+    batch_size: int = 64
+    lr: float = 0.0003
+    patience: int = 10
+
+
 class WaveCastConfig(BaseSettings):
     """Top-level configuration."""
 
@@ -88,6 +119,9 @@ class WaveCastConfig(BaseSettings):
     fractal: FractalConfig = Field(default_factory=FractalConfig)
     model: ModelConfig = Field(default_factory=ModelConfig)
     backtest: BacktestConfig = Field(default_factory=BacktestConfig)
+    sax: SAXConfig = Field(default_factory=SAXConfig)
+    tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)
+    sequence_model: SequenceModelConfig = Field(default_factory=SequenceModelConfig)
 
     def ensure_dirs(self) -> None:
         """Create all required directories."""

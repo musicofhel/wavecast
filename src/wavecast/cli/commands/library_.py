@@ -108,3 +108,27 @@ def import_cmd(
     target = dest_dir / source.name
     shutil.copy2(source, target)
     console.print(f"[green]Imported {source.name} → {target}[/green]")
+
+
+@app.command()
+def build(
+    universe_name: str = typer.Option("default", "--universe", "-u", help="Universe name"),
+    start: str = typer.Option(None, "--start", help="Start date"),
+    end: str = typer.Option(None, "--end", help="End date"),
+    dedup_threshold: float = typer.Option(0.3, "--dedup", help="Deduplication threshold"),
+) -> None:
+    """Build a master shapelet library from multiple assets."""
+    from wavecast.core.universe import get_universe
+    from wavecast.pipeline.library_builder import build_master_library
+
+    universe = get_universe(universe_name)
+    console.print(f"[bold]Building library for {len(universe)} assets...[/bold]")
+
+    result = build_master_library(
+        universe=universe, start=start, end=end, dedup_threshold=dedup_threshold,
+    )
+
+    console.print(f"\n[green]Library built in {result.duration_seconds:.1f}s[/green]")
+    console.print(f"  Shapelets: {result.stats.get('count', 0)}")
+    if result.failed_tickers:
+        console.print(f"  [yellow]Failed: {', '.join(result.failed_tickers)}[/yellow]")

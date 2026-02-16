@@ -8,6 +8,8 @@ from wavecast.cli.commands import (
     forecast,
     library_,
     match,
+    sax,
+    tokenize,
 )
 
 __all__ = [
@@ -18,4 +20,6 @@ __all__ = [
     "forecast",
     "library_",
     "match",
+    "sax",
+    "tokenize",
 ]

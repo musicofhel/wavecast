@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 from numpy.typing import NDArray
 
+from wavecast.core.config import SAXConfig
 from wavecast.core.types import (
     FeatureVector,
     HurstResult,
@@ -15,7 +16,7 @@ from wavecast.core.types import (
     WaveletDecomposition,
 )
 
-from . import fractal_features, market_features, shapelet_features, wavelet_features
+from . import fractal_features, market_features, sax_features, shapelet_features, wavelet_features
 
 
 class FeaturePipeline:
@@ -31,6 +32,7 @@ class FeaturePipeline:
         values: NDArray | None = None,
         market_window: int = 20,
         shapelet_top_k: int = 5,
+        sax_config: SAXConfig | None = None,
     ) -> FeatureVector:
         """Extract all features and return a FeatureVector."""
         wf = wavelet_features.extract(decomp)
@@ -41,12 +43,18 @@ class FeaturePipeline:
             if values is not None
             else np.zeros(market_features.MARKET_FEATURE_SIZE, dtype=np.float64)
         )
+        sf_sax = (
+            sax_features.extract(decomp, sax_config)
+            if sax_config is not None
+            else np.array([], dtype=np.float64)
+        )
 
         return FeatureVector(
             wavelet_features=wf,
             shapelet_features=sf,
             fractal_features=ff,
             market_features=mf,
+            sax_features=sf_sax,
         )
 
     def build_feature_matrix(
@@ -60,6 +68,7 @@ class FeaturePipeline:
         window: int = 50,
         horizon: int = 1,
         market_window: int = 20,
+        sax_config: SAXConfig | None = None,
     ) -> tuple[NDArray, NDArray]:
         """Build a feature matrix X and target vector y using rolling windows.
 
@@ -96,6 +105,7 @@ class FeaturePipeline:
                 self_sim=self_sim_i,
                 values=segment,
                 market_window=market_window,
+                sax_config=sax_config,
             )
             X_rows.append(fv.combined)
 

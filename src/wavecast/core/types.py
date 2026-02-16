@@ -198,15 +198,19 @@ class FeatureVector:
     shapelet_features: NDArray[np.float64]
     fractal_features: NDArray[np.float64]
     market_features: NDArray[np.float64]
+    sax_features: NDArray[np.float64] = field(default_factory=lambda: np.array([], dtype=np.float64))
 
     @property
     def combined(self) -> NDArray[np.float64]:
-        return np.concatenate([
+        parts = [
             self.wavelet_features,
             self.shapelet_features,
             self.fractal_features,
             self.market_features,
-        ])
+        ]
+        if len(self.sax_features) > 0:
+            parts.append(self.sax_features)
+        return np.concatenate(parts)
 
 
 @dataclass
@@ -234,6 +238,55 @@ class BacktestResult:
     metrics: dict[str, float]
     model_name: str
     ticker: str
+
+
+class AssetClass(str, Enum):
+    """Asset class classification."""
+
+    EQUITY = "equity"
+    CRYPTO = "crypto"
+    FOREX = "forex"
+    COMMODITY = "commodity"
+
+
+@dataclass
+class SAXRepresentation:
+    """Result of SAX transformation."""
+
+    symbols: str
+    alphabet_size: int
+    breakpoints: NDArray[np.float64]
+    n_segments: int
+    original_length: int
+
+
+@dataclass
+class SAXWord:
+    """A SAX word with token mapping."""
+
+    word: str
+    token_id: int
+    level: int
+
+
+@dataclass
+class TokenSequence:
+    """Token sequence for a single wavelet level."""
+
+    token_ids: list[int]
+    words: list[str]
+    ticker: str
+    interval: str
+    wavelet_level: int
+
+
+@dataclass
+class MultiLevelTokenSequence:
+    """Token sequences across all wavelet levels."""
+
+    ticker: str
+    interval: str
+    level_sequences: dict[int, TokenSequence]
 
 
 @dataclass

@@ -21,6 +21,8 @@ from wavecast.cli.commands import (
     forecast,
     library_,
     match,
+    sax,
+    tokenize,
 )
 
 app = typer.Typer(
@@ -37,6 +39,8 @@ app.add_typer(analyze.app, name="analyze", help="Fractal and wavelet analysis")
 app.add_typer(forecast.app, name="forecast", help="Run forecasts")
 app.add_typer(library_.app, name="library", help="Manage shapelet library")
 app.add_typer(backtest.app, name="backtest", help="Walk-forward backtesting")
+app.add_typer(sax.app, name="sax", help="SAX symbolic transformation")
+app.add_typer(tokenize.app, name="tokenize", help="Tokenize wavelet coefficients")
 
 
 @app.callback()
