@@ -67,7 +67,6 @@ class TestCalibration:
         n = 200
         proba = rng.dirichlet(np.ones(100), size=n)
         actual = rng.integers(0, 100, size=n)
-        old_temp = generator.temperature
         new_temp = generator.calibrate(proba, actual)
         assert isinstance(new_temp, float)
         assert new_temp > 0

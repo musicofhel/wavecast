@@ -10,7 +10,6 @@ from wavecast.evaluation.metrics import (
     calmar_ratio,
     conditional_var,
     expectancy,
-    max_drawdown,
     sortino_ratio,
     tail_ratio,
     value_at_risk,
