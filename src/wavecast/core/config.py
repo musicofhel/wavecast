@@ -7,6 +7,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
+from wavecast.signals.config import SignalBacktestConfig
+
 
 class WaveletConfig(BaseSettings):
     """Wavelet decomposition settings."""
@@ -125,6 +127,7 @@ class WaveCastConfig(BaseSettings):
     sax: SAXConfig = Field(default_factory=SAXConfig)
     tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)
     sequence_model: SequenceModelConfig = Field(default_factory=SequenceModelConfig)
+    signal_backtest: SignalBacktestConfig = Field(default_factory=SignalBacktestConfig)
 
     def ensure_dirs(self) -> None:
         """Create all required directories."""

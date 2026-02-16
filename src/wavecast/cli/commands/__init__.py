@@ -10,6 +10,7 @@ from wavecast.cli.commands import (
     library_,
     match,
     sax,
+    signal,
     tokenize,
 )
 
@@ -23,5 +24,6 @@ __all__ = [
     "library_",
     "match",
     "sax",
+    "signal",
     "tokenize",
 ]

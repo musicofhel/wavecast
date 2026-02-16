@@ -23,6 +23,7 @@ from wavecast.cli.commands import (
     library_,
     match,
     sax,
+    signal,
     tokenize,
 )
 
@@ -42,6 +43,7 @@ app.add_typer(library_.app, name="library", help="Manage shapelet library")
 app.add_typer(backtest.app, name="backtest", help="Walk-forward backtesting")
 app.add_typer(experiment.app, name="experiment", help="Run and compare experiments")
 app.add_typer(sax.app, name="sax", help="SAX symbolic transformation")
+app.add_typer(signal.app, name="signal", help="Signal generation and backtesting")
 app.add_typer(tokenize.app, name="tokenize", help="Tokenize wavelet coefficients")
 
 
