@@ -7,7 +7,7 @@ Wavelet-shapelet financial forecasting library with SAX tokenization and transfo
 ```bash
 cd ~/wavecast
 source .venv/bin/activate
-pytest tests/ -q          # 303 tests, ~9s on GPU
+pytest tests/ -q          # 349 tests, ~9s on GPU
 ruff check src/ tests/    # 0 errors
 ```
 
@@ -33,19 +33,20 @@ src/wavecast/
   sax/          — PAA, SAX transform, Bag-of-Words + TF-IDF, price reconstruction
   tokenizer/    — SAXVocabulary, WaveletSAXTokenizer, sequence dataset builder
   models/       — WaveletLSTM, WaveletGPT, XGBoost, ensemble, registry
-  evaluation/   — metrics, walk-forward backtest, token prediction eval
+  evaluation/   — metrics (16 risk metrics), walk-forward backtest, token prediction eval, signal reporting
+  signals/      — SignalGenerator, SignalBacktest, PositionSizer, TransactionCostModel, signal types & config
   experiments/  — ExperimentConfig, ExperimentResult, Runner, Splitter, Metrics, Storage, HPO
   pipeline/     — stage orchestration, runner, library builder, token pipeline
-  cli/          — Typer CLI: data, discover, match, analyze, forecast, library, backtest, sax, tokenize, experiment
+  cli/          — Typer CLI: data, discover, match, analyze, forecast, library, backtest, sax, tokenize, experiment, signal
   viz/          — scalogram, shapelet gallery, DTW alignment, forecast, fractal plots
 tests/
-  unit/         — 45 test files, 302 unit tests
-  integration/  — 1 pipeline integration test
+  unit/         — 51 test files, 347 unit tests
+  integration/  — 2 integration tests (pipeline, signal pipeline)
   fixtures/     — deterministic generators (seed=42)
 scripts/        — experiment runners (run_C1-C7, run_D1_D4, run_F1/F4/F5/F6), fetch_phase3_universe.py
 ```
 
-92 source files, 52 test files, 303 tests passing.
+100 source files, 58 test files, 349 tests passing.
 
 ## Architecture: Two Pipelines
 
@@ -69,6 +70,17 @@ data → decompose → SAX → tokenize → train WaveletGPT → evaluate
 - Multi-horizon prediction: horizons=[1,2,4,8], h=1-2 useful, h=4+ plateaus
 - Evaluate: token accuracy, top-3 accuracy, directional accuracy (per-horizon)
 - Phase 3 proved P2 dominates P1 — no ensemble benefit
+
+### Pipeline 3: Signal Generation & Backtesting (Phase 5)
+```
+WaveletGPT.predict_proba() → SignalGenerator → PositionSizer → SignalBacktest → SignalBacktestResult
+```
+- Softmax probabilities aggregated by quartile bucket → P(up), P(down), P(flat); argmax = direction
+- Temperature scaling calibration via NLL minimization on validation data
+- Position sizing: fixed, linear (confidence × max), Kelly, fractional Kelly (0.5× Kelly with rolling lookback)
+- Transaction costs: commission + spread (bps) + slippage (bps); direction changes double costs
+- 16 risk metrics: Sharpe, Sortino, Calmar, max drawdown, profit factor, VaR, CVaR, win rate, avg win/loss ratio, expectancy, tail ratio, total/annualized return, volatility, num trades, avg trade return
+- Per-trade records with entry/exit timestamps, gross/net returns, cost breakdown
 
 ### Experiment Framework (Phase 3)
 ```
@@ -118,6 +130,14 @@ from wavecast.fractal.hurst import rolling_hurst_with_regimes, HurstCache
 
 # Phase 4
 from wavecast.sax.reconstruction import reconstruct_price_delta, tokens_to_direction, PriceReconstructionResult
+
+# Phase 5 Signals
+from wavecast.signals import SignalGenerator, SignalBacktest, PositionSizer, TransactionCostModel
+from wavecast.signals import TradingSignal, SignalSeries, TradeRecord, SignalBacktestResult
+from wavecast.signals.config import SignalConfig, PositionSizingConfig, TransactionCostConfig, SignalBacktestConfig
+from wavecast.evaluation.metrics import sortino_ratio, calmar_ratio, value_at_risk, conditional_var
+from wavecast.evaluation.metrics import win_rate, avg_win_loss_ratio, expectancy, tail_ratio
+from wavecast.evaluation.reporting import generate_signal_report
 ```
 
 ## CLI
@@ -148,6 +168,11 @@ wavecast experiment compare C1_granularity C2_level_contribution
 
 # Phase 4
 wavecast sax reconstruct AAPL              # price reconstruction from SAX tokens
+
+# Phase 5 Signals
+wavecast signal generate MODEL_PATH TICKER --horizon 1 --confidence-threshold 0.5
+wavecast signal backtest MODEL_PATH TICKERS --train-end 2023-12-31 --test-start 2024-01-01 --position-method fractional_kelly
+wavecast signal calibrate MODEL_PATH TICKERS --validation-start 2024-01-01 --validation-end 2024-06-30
 ```
 
 ## Config System
@@ -162,7 +187,11 @@ Pydantic `BaseSettings` hierarchy in `core/config.py`:
 - `SAXConfig` — n_segments=512, alphabet_size=7, word_length=4, word_stride=1 (Phase 4 Optuna)
 - `TokenizerConfig` — context_length=16, min_word_freq=1, max_vocab_size=100
 - `SequenceModelConfig` — embed_dim=128, num_heads=4, num_layers=6, dropout=0.2, epochs=80, lr=0.0005, patience=15 (Phase 4 Optuna, dwt_levels=[1,2,5])
-- `WaveCastConfig` — top-level aggregator with data/library/model/cache dirs
+- `WaveCastConfig` — top-level aggregator with data/library/model/cache dirs + signal_backtest
+- `SignalConfig` — confidence_threshold, calibration_method, temperature
+- `PositionSizingConfig` — method (fixed/linear/kelly/fractional_kelly), max_position, kelly_fraction, min_position
+- `TransactionCostConfig` — commission_rate, spread_bps, slippage_bps
+- `SignalBacktestConfig` — initial_capital + nested signal/position_sizing/costs configs
 - `ExperimentConfig` — full experiment specification (tickers, interval, SAX/model params, split dates)
 - `ExperimentResult` — metrics + CIs + baselines + per-asset/sector/level breakdowns
 
@@ -175,6 +204,12 @@ Core dataclasses in `core/types.py`:
 - `FeatureVector` (wavelet + shapelet + fractal + market + sax features)
 - `SAXRepresentation`, `SAXWord`, `TokenSequence`, `MultiLevelTokenSequence`
 - Enums: `MarketLabel`, `RegimeType`, `AssetClass`, `Sector`
+
+Signal dataclasses in `signals/types.py`:
+- `TradingSignal` (timestamp, direction +1/-1/0, confidence, raw_probability, token_id, horizon, ticker)
+- `SignalSeries` (list[TradingSignal]; properties: directions, confidences, timestamps)
+- `TradeRecord` (entry/exit timestamps, direction, position_size, gross/net return, cost breakdown, confidence)
+- `SignalBacktestResult` (returns, positions, equity_curve, timestamps, trades, metrics dict, config dict)
 
 ## Exception Hierarchy
 
@@ -211,21 +246,28 @@ WaveCastError
 - `DEFAULT_UNIVERSE` (= `PHASE3_UNIVERSE`) has 20 US assets with sector tags; `LEGACY_UNIVERSE` has the original 19 (incl. crypto/forex). `get_universe("legacy")` for old universe.
 - `AssetSpec` has optional `sector: Sector | None` field — set for DEFAULT_UNIVERSE, None for LEGACY_UNIVERSE
 - Directional accuracy is level-0 only for multi-level SAX — detail levels represent oscillation magnitude, not price direction
+- `SignalGenerator` uses same quartile boundaries as `token_eval.py`: midpoint=vocab_size//2, quarter=vocab_size//4. UP: tokens >= midpoint+quarter, DOWN: tokens <= midpoint-quarter
+- `PositionSizer` Kelly methods fall back to linear sizing with fewer than 10 trade records in history
+- `PositionSizer.min_position` uses strict `<` comparison — confidence exactly equal to min_position is NOT filtered out
+- `TransactionCostModel.zero()` class method creates zero-cost model for testing
+- `SignalBacktest` equity_curve has length n (not n+1) — initial capital is the first element scaled by first period return
 
 ## Testing
 
 ```bash
-pytest tests/ -q                                          # full suite (~8s GPU)
+pytest tests/ -q                                          # full suite, 349 tests (~9s GPU)
 pytest tests/unit/ -q                                     # unit only (~5s)
 pytest tests/unit/test_wavelet_gpt.py -v                  # GPU model tests
 pytest tests/unit/test_experiment_runner.py -v             # experiment framework tests
+pytest tests/unit/test_signal_backtest.py tests/unit/test_signal_generator.py -v  # signal tests
+pytest tests/integration/test_signal_pipeline.py -v       # signal pipeline integration
 pytest tests/ --cov=wavecast --cov-report=term-missing    # coverage
 ruff check src/ tests/                                    # lint
 ```
 
 ## Benchmarks (RTX 2060 SUPER)
 
-- Full test suite: 303 tests in 9s (was 2m20s CPU-only before GPU)
+- Full test suite: 349 tests in 9s (was 2m20s CPU-only before GPU)
 - WaveletGPT tests: ~5s
 - WaveletGPT training (161K-600K params, 80 epochs): 4-10s depending on architecture
 - SAX+BoW+TF-IDF on 7 assets x 2000 points: <1s
