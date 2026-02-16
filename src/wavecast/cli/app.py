@@ -20,6 +20,7 @@ from wavecast.cli.commands import (
     discover,
     experiment,
     forecast,
+    forward,
     library_,
     match,
     sax,
@@ -45,6 +46,7 @@ app.add_typer(experiment.app, name="experiment", help="Run and compare experimen
 app.add_typer(sax.app, name="sax", help="SAX symbolic transformation")
 app.add_typer(signal.app, name="signal", help="Signal generation and backtesting")
 app.add_typer(tokenize.app, name="tokenize", help="Tokenize wavelet coefficients")
+app.add_typer(forward.app, name="forward", help="Forward testing (paper trading)")
 
 
 @app.callback()

@@ -244,6 +244,59 @@ def fetch_massive_ohlcv(
     return df
 
 
+def fetch_latest_bars(
+    ticker: str,
+    interval: str = "1h",
+    n_bars: int = 200,
+) -> pd.DataFrame:
+    """Fetch the most recent N bars for a ticker.
+
+    Always fetches fresh from API (no Parquet cache).
+    Computes start date as now - n_bars * interval_duration * 1.5 to buffer for
+    weekends, holidays, and trading gaps.
+
+    Args:
+        ticker: Stock ticker symbol.
+        interval: Data interval (must be in _INTERVAL_TO_TIMESPAN).
+        n_bars: Number of recent bars to fetch.
+
+    Returns:
+        DataFrame with columns: timestamp, open, high, low, close, volume.
+        Sorted by timestamp ascending, limited to last n_bars rows.
+
+    Raises:
+        DataError: If interval is unsupported or API fails.
+        DataNotFoundError: If no data returned.
+    """
+    interval_hours: dict[str, float] = {
+        "1m": 1 / 60,
+        "5m": 5 / 60,
+        "15m": 0.25,
+        "30m": 0.5,
+        "1h": 1.0,
+        "1d": 24.0,
+        "1w": 168.0,
+        "1mo": 720.0,
+    }
+
+    hours_per_bar = interval_hours.get(interval)
+    if hours_per_bar is None:
+        raise DataError(
+            f"Unsupported interval '{interval}'. "
+            f"Supported: {list(_INTERVAL_TO_TIMESPAN.keys())}"
+        )
+
+    # Buffer of 1.5x handles weekends, holidays, trading gaps
+    total_hours = n_bars * hours_per_bar * 1.5
+    start = (datetime.now() - timedelta(hours=total_hours)).strftime("%Y-%m-%d")
+    end = datetime.now().strftime("%Y-%m-%d")
+
+    df = fetch_massive_ohlcv(ticker, start=start, end=end, interval=interval)
+
+    # Return only the last n_bars
+    return df.tail(n_bars).reset_index(drop=True)
+
+
 def fetch_universe(
     tickers: list[str],
     start: str = "2021-02-01",
