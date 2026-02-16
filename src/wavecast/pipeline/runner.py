@@ -164,14 +164,12 @@ class PipelineRunner:
             model = GradientBoostModel()
             model.fit(X_train_fit, y_train_fit, X_val, y_val)
         elif model_type == "lstm":
-            n_features = X.shape[1]
             model = WaveletLSTM()
             model.fit(X_train_fit, y_train_fit, X_val, y_val)
         else:  # ensemble
             xgb = GradientBoostModel()
             xgb.fit(X_train_fit, y_train_fit, X_val, y_val)
-            n_features = X.shape[1]
-            lstm = WaveletLSTM(input_size=n_features)
+            lstm = WaveletLSTM()
             lstm.fit(X_train_fit, y_train_fit, X_val, y_val)
             model = EnsembleModel(models=[xgb, lstm])
             model.fit(X_train_fit, y_train_fit, X_val, y_val)

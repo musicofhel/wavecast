@@ -72,7 +72,7 @@ def stage_data(
         if cached is not None:
             return cached
         ts = fetch_massive(ticker, start, end, interval)
-        cache.put(ticker, interval, ts)
+        cache.put(ts)
         return handle_nans(ts)
 
     return _timed(Stage.DATA, _fetch)

@@ -164,7 +164,9 @@ def label_returns(
             f"Cannot label returns for {ts.ticker}: need at least 2 values"
         )
 
-    returns = np.diff(ts.values) / ts.values[:-1]
+    denominator = ts.values[:-1]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        returns = np.where(denominator != 0, np.diff(ts.values) / denominator, 0.0)
 
     labels = np.empty(len(returns), dtype=object)
     for i, r in enumerate(returns):

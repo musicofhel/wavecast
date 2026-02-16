@@ -19,8 +19,8 @@ class WaveletConfig(BaseSettings):
 class ShapeletConfig(BaseSettings):
     """Shapelet discovery settings."""
 
-    z_threshold: float = 1.0
-    min_length: int = 5
+    z_threshold: float = 0.5
+    min_length: int = 3
     min_variance: float = 0.01
     top_k: int = 20
     ig_min: float = 0.01

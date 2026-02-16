@@ -20,7 +20,7 @@ def wavelet_hurst(
     Performs DWT decomposition, computes variance at each detail level,
     then fits log2(var_j) vs log2(scale_j) to extract H.
     """
-    values = np.asarray(values, dtype=np.float64)
+    values = np.array(values, dtype=np.float64, copy=True)
     if len(values) < 16:
         raise FractalError("Need at least 16 data points for wavelet Hurst estimation")
 
@@ -86,7 +86,7 @@ def rolling_hurst(
     Returns:
         Tuple of (hurst_values, center_indices) arrays.
     """
-    values = np.asarray(values, dtype=np.float64)
+    values = np.array(values, dtype=np.float64, copy=True)
     n = len(values)
     if n < window:
         raise FractalError(f"Series length {n} is shorter than window {window}")

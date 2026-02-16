@@ -29,10 +29,10 @@ def decompose(
         DecompositionError: If the data is too short or wavelet is invalid.
     """
     if isinstance(data, TimeSeries):
-        values = data.values.astype(np.float64)
+        values = np.array(data.values, dtype=np.float64, copy=True)
         ticker = data.ticker
     else:
-        values = np.asarray(data, dtype=np.float64)
+        values = np.array(data, dtype=np.float64, copy=True)
         ticker = ""
 
     if values.ndim != 1:

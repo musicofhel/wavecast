@@ -7,7 +7,7 @@ def test_default_config():
     config = WaveCastConfig()
     assert config.wavelet.wavelet == "db4"
     assert config.wavelet.level == 5
-    assert config.shapelet.z_threshold == 1.0
+    assert config.shapelet.z_threshold == 0.5
     assert config.dtw.window == 10
     assert config.fractal.hurst_method == "wavelet"
 

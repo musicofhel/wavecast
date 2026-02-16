@@ -21,7 +21,7 @@ def compute_mfdfa(
     """
     from MFDFA import MFDFA as mfdfa_func
 
-    values = np.asarray(values, dtype=np.float64)
+    values = np.array(values, dtype=np.float64, copy=True)
     if len(values) < 100:
         raise FractalError("Need at least 100 data points for MFDFA")
 

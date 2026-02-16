@@ -22,7 +22,7 @@ def detect_regime(
     Combines Hurst exponent with optional MFDFA for a confidence-weighted
     regime classification.
     """
-    values = np.asarray(values, dtype=np.float64)
+    values = np.array(values, dtype=np.float64, copy=True)
     if config is None:
         config = FractalConfig()
 
@@ -75,7 +75,7 @@ def rolling_regime(
     config: FractalConfig | None = None,
 ) -> list[RegimeDetection]:
     """Compute rolling regime detection over a sliding window."""
-    values = np.asarray(values, dtype=np.float64)
+    values = np.array(values, dtype=np.float64, copy=True)
     n = len(values)
     if n < window:
         raise FractalError(f"Series length {n} is shorter than window {window}")
