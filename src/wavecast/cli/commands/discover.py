@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -21,7 +20,7 @@ def run(
     levels: int = typer.Option(5, "--levels", "-l", help="DWT decomposition levels"),
     wavelet: str = typer.Option("db4", "--wavelet", "-w", help="Wavelet family"),
     threshold: float = typer.Option(1.0, "--threshold", "-t", help="Z-score threshold"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output .h5 path"),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output .h5 path"),
 ) -> None:
     """Run W-TSS shapelet discovery on a ticker."""
     from wavecast.data.preprocessing import label_returns, log_returns

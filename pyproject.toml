@@ -64,7 +64,14 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "N803",   # argument name should be lowercase (X, H are standard in math)
+    "N806",   # variable name should be lowercase (same)
+    "N811",   # constant imported as non-constant
+    "B008",   # function call in default arg (typer.Option/Argument by design)
+    "TCH",    # type-checking imports (cosmetic, not worth the churn)
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["wavecast"]
@@ -84,7 +91,6 @@ module = [
     "stumpy.*",
     "xgboost.*",
     "torch.*",
-    "yfinance.*",
     "h5py.*",
     "optuna.*",
     "sklearn.*",

@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from tests.fixtures.generators import make_labels, make_sine_series
+from tests.fixtures.generators import make_sine_series
 from wavecast.core.config import ShapeletConfig
 from wavecast.data.preprocessing import label_returns, log_returns
 from wavecast.features.pipeline import FeaturePipeline
@@ -33,7 +33,7 @@ def test_full_pipeline():
     assert isinstance(shapelets, list)
 
     # Build library
-    library = ShapeletLibrary(shapelets)
+    _library = ShapeletLibrary(shapelets)
 
     # Stage 4: Fractal analysis
     hurst = wavelet_hurst(ts.values)

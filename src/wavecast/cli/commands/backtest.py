@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 
 from wavecast.core.config import WaveCastConfig
@@ -20,8 +17,8 @@ def run_backtest(
     ticker: str = typer.Argument(..., help="Ticker symbol"),
     strategy: str = typer.Option("ensemble", "--strategy", "-s",
                                   help="Model strategy: ensemble, xgboost, lstm"),
-    start: Optional[str] = typer.Option(None, "--start"),
-    end: Optional[str] = typer.Option(None, "--end"),
+    start: str | None = typer.Option(None, "--start"),
+    end: str | None = typer.Option(None, "--end"),
     train_window: int = typer.Option(252, "--train-window", help="Training window size"),
     test_window: int = typer.Option(21, "--test-window", help="Test window size"),
 ) -> None:
@@ -52,16 +49,15 @@ def run_backtest(
         returns_ts = log_returns(ts)
         labels = label_returns(returns_ts)
         shapelets = discover_shapelets(decomp, labels, config.shapelet)
-        library = ShapeletLibrary(shapelets)
+        _library = ShapeletLibrary(shapelets)
 
-        hurst = wavelet_hurst(ts.values)
-        mfdfa_result = None
+        _hurst = wavelet_hurst(ts.values)
         if len(ts.values) >= 256:
             try:
-                mfdfa_result = compute_mfdfa(ts.values)
+                compute_mfdfa(ts.values)
             except Exception:
                 pass
-        self_sim = cross_scale_similarity(decomp)
+        cross_scale_similarity(decomp)
 
     with console.status("Building feature matrix..."):
         pipeline = FeaturePipeline()

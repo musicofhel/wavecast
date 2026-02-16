@@ -258,7 +258,6 @@ class WaveletLSTM(BaseModel):
         # Need to know feature size to reconstruct — infer from state dict
         state = torch.load(model_path, map_location="cpu", weights_only=True)
         branch_sizes = config["branch_input_sizes"]
-        total_branch = sum(branch_sizes)
 
         # Infer extra_features_size from head input layer weight shape
         head_input_features = state["head.0.weight"].shape[1]

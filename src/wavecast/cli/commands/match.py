@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -53,16 +51,13 @@ def find(
 def similarity(
     ticker1: str = typer.Argument(..., help="First ticker"),
     ticker2: str = typer.Argument(..., help="Second ticker"),
-    levels: Optional[str] = typer.Option(None, "--levels", "-l",
+    levels: str | None = typer.Option(None, "--levels", "-l",
                                          help="Comma-separated levels (e.g., 3,4,5)"),
 ) -> None:
     """Compute multi-level DTW similarity between two tickers."""
-    from wavecast.dtw.similarity import similarity_matrix as sim_mat
-    from wavecast.pipeline.stages import stage_data, stage_decompose
-
-    import numpy as np
 
     from wavecast.dtw.matching import match_single
+    from wavecast.pipeline.stages import stage_data, stage_decompose
 
     config = WaveCastConfig()
     config.ensure_dirs()

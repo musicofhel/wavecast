@@ -5,9 +5,7 @@ import numpy as np
 from wavecast.core.types import (
     HurstResult,
     MatchResult,
-    MFDFAResult,
     RegimeType,
-    SelfSimilarityResult,
     ShapeletMatch,
 )
 from wavecast.features import fractal_features, market_features, shapelet_features, wavelet_features

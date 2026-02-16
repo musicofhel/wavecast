@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -21,8 +19,8 @@ def run_forecast(
     horizon: int = typer.Option(5, "--horizon", "-h", help="Forecast horizon (days)"),
     model: str = typer.Option("ensemble", "--model", "-m",
                                help="Model type: ensemble, xgboost, lstm"),
-    start: Optional[str] = typer.Option(None, "--start", "-s"),
-    end: Optional[str] = typer.Option(None, "--end", "-e"),
+    start: str | None = typer.Option(None, "--start", "-s"),
+    end: str | None = typer.Option(None, "--end", "-e"),
 ) -> None:
     """Run forecast for a ticker."""
     from wavecast.pipeline.runner import PipelineRunner
@@ -65,12 +63,11 @@ def run_forecast(
 @app.command()
 def evaluate(
     ticker: str = typer.Argument(..., help="Ticker symbol"),
-    start: Optional[str] = typer.Option(None, "--start", "-s"),
-    end: Optional[str] = typer.Option(None, "--end", "-e"),
+    start: str | None = typer.Option(None, "--start", "-s"),
+    end: str | None = typer.Option(None, "--end", "-e"),
     model: str = typer.Option("ensemble", "--model", "-m"),
 ) -> None:
     """Evaluate forecast accuracy on historical data."""
-    from wavecast.evaluation import metrics as m
     from wavecast.pipeline.runner import PipelineRunner
 
     config = WaveCastConfig()

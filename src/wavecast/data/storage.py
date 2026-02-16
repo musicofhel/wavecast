@@ -114,9 +114,7 @@ def _dataset_to_shapelet(ds: h5py.Dataset) -> Shapelet:
 
 def _store_attr(ds: h5py.Dataset, key: str, value: Any) -> None:
     """Store a metadata value as an HDF5 attribute."""
-    if isinstance(value, (int, float, str, bool, np.integer, np.floating)):
-        ds.attrs[key] = value
-    elif isinstance(value, np.ndarray):
+    if isinstance(value, (int, float, str, bool, np.integer, np.floating)) or isinstance(value, np.ndarray):
         ds.attrs[key] = value
     else:
         # Fall back to string representation

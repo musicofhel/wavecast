@@ -1,6 +1,5 @@
 """Tests for shapelet discovery."""
 
-import numpy as np
 
 from tests.fixtures.generators import make_labels
 from wavecast.core.config import ShapeletConfig

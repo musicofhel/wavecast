@@ -1,7 +1,6 @@
 """Tests for ShapeletLibrary."""
 
 import numpy as np
-import pytest
 
 from wavecast.core.types import MarketLabel, Shapelet
 from wavecast.shapelets.library import ShapeletLibrary

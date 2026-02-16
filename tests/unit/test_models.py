@@ -1,7 +1,6 @@
 """Tests for forecasting models."""
 
 import numpy as np
-import pytest
 
 from tests.fixtures.generators import make_feature_matrix
 from wavecast.models.gradient_boost import GradientBoostModel

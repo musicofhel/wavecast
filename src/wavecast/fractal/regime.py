@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 
 from wavecast.core.config import FractalConfig
 from wavecast.core.exceptions import FractalError
-from wavecast.core.types import RegimeDetection, RegimeType
+from wavecast.core.types import RegimeDetection
 
 from .hurst import wavelet_hurst
 from .mfdfa import compute_mfdfa

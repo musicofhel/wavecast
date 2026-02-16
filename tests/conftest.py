@@ -1,6 +1,5 @@
 """Shared pytest fixtures."""
 
-import numpy as np
 import pytest
 
 from tests.fixtures.generators import (

@@ -4,16 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import numpy as np
-
 from wavecast.core.config import WaveCastConfig
 from wavecast.core.exceptions import PipelineError
 from wavecast.core.types import (
     ForecastResult,
-    HurstResult,
-    MFDFAResult,
-    RegimeDetection,
-    SelfSimilarityResult,
     Shapelet,
     TimeSeries,
     WaveletDecomposition,
@@ -126,12 +120,12 @@ class PipelineRunner:
         library = ShapeletLibrary(shapelets)
 
         # Stage 4: Match
-        match_result = None
+        _match_result = None
         if len(shapelets) > 0:
             best_level = max(range(1, decomp.level + 1), key=lambda lv: sum(
                 1 for s in shapelets if s.wavelet_level == lv
             ))
-            match_result = match_against_library(
+            _match_result = match_against_library(
                 decomp.detail_at_level(best_level),
                 library,
                 best_level,
@@ -157,7 +151,7 @@ class PipelineRunner:
         # Split data
         split = int(len(X) * 0.8)
         X_train, X_test = X[:split], X[split:]
-        y_train, y_test = y[:split], y[split:]
+        y_train, _y_test = y[:split], y[split:]
 
         val_split = int(len(X_train) * 0.8)
         X_val = X_train[val_split:]

@@ -1,7 +1,6 @@
 """Tests for MFDFA."""
 
 import numpy as np
-import pytest
 
 from wavecast.fractal.mfdfa import compute_mfdfa
 

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -17,8 +15,8 @@ console = Console()
 @app.command()
 def fetch(
     ticker: str = typer.Argument(..., help="Ticker symbol (e.g., AAPL)"),
-    start: Optional[str] = typer.Option(None, "--start", "-s", help="Start date (YYYY-MM-DD)"),
-    end: Optional[str] = typer.Option(None, "--end", "-e", help="End date (YYYY-MM-DD)"),
+    start: str | None = typer.Option(None, "--start", "-s", help="Start date (YYYY-MM-DD)"),
+    end: str | None = typer.Option(None, "--end", "-e", help="End date (YYYY-MM-DD)"),
     interval: str = typer.Option("1d", "--interval", "-i", help="Data interval"),
 ) -> None:
     """Fetch market data and cache locally."""
@@ -44,6 +42,8 @@ def fetch(
 @app.command("list")
 def list_cmd() -> None:
     """List cached tickers."""
+    from wavecast.data.cache import ParquetCache
+
     config = WaveCastConfig()
     cache = ParquetCache(config.cache_dir)
     cached = cache.list_cached()
@@ -68,6 +68,8 @@ def info(
     interval: str = typer.Option("1d", "--interval", "-i"),
 ) -> None:
     """Show info about cached data."""
+    from wavecast.data.cache import ParquetCache
+
     config = WaveCastConfig()
     cache = ParquetCache(config.cache_dir)
     ts = cache.get(ticker, interval)

@@ -31,7 +31,6 @@ def extract(decomp: WaveletDecomposition) -> NDArray:
     Returns a flat array with per-level statistics and cross-level features.
     Feature layout: [level_1_feats, level_2_feats, ..., level_n_feats, approx_feats, cross_level_feats]
     """
-    all_coeffs = decomp.coefficients  # [cA_n, cD_n, ..., cD_1]
     details = decomp.details  # [cD_n, ..., cD_1]
     approx = decomp.approximation
 

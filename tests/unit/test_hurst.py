@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 from wavecast.core.exceptions import FractalError
-from wavecast.core.types import RegimeType
 from wavecast.fractal.hurst import rolling_hurst, wavelet_hurst
 
 
