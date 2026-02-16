@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 from torch.utils.data import DataLoader, TensorDataset
 
 from wavecast.core.exceptions import ModelNotTrainedError
+from wavecast.data.mmap_dataset import MMapSequenceDataset
 
 from .base import BaseModel
 
@@ -132,9 +133,11 @@ class WaveletGPT(BaseModel):
         patience: int = 10,
         prediction_horizons: list[int] | None = None,
         horizon_weights: dict[int, float] | None = None,
+        use_amp: bool = False,
     ) -> None:
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
+        self._use_amp = use_amp
         self._config = {
             "vocab_size": vocab_size,
             "context_length": context_length,
@@ -149,6 +152,7 @@ class WaveletGPT(BaseModel):
             "learning_rate": learning_rate,
             "patience": patience,
             "prediction_horizons": self._prediction_horizons,
+            "use_amp": use_amp,
         }
         if self._horizon_weights is not None:
             self._config["horizon_weights"] = {
@@ -200,7 +204,14 @@ class WaveletGPT(BaseModel):
         y_train: NDArray,
         X_val: NDArray | None = None,
         y_val: NDArray | None = None,
+        use_amp: bool | None = None,
+        dataset_path: Path | None = None,
     ) -> dict[str, float]:
+        # Resolve AMP: explicit arg > instance default; only on CUDA
+        amp_enabled = use_amp if use_amp is not None else self._use_amp
+        if self._device.type != "cuda":
+            amp_enabled = False
+
         # Build network
         self._net = WaveletGPTNet(
             vocab_size=self._config["vocab_size"],
@@ -217,6 +228,7 @@ class WaveletGPT(BaseModel):
         optimizer = torch.optim.AdamW(
             self._net.parameters(), lr=self._config["learning_rate"]
         )
+        scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
         criterion = nn.CrossEntropyLoss(ignore_index=0)  # ignore PAD
 
         # Resolve horizon weights
@@ -231,19 +243,21 @@ class WaveletGPT(BaseModel):
         ctx_train, lvl_train, ac_train = self._parse_x(X_train)
         y_per_horizon = self._parse_y_multi(y_train)
 
-        # Build tensors for each horizon target
-        target_tensors = []
-        for h in self._prediction_horizons:
-            target_tensors.append(
-                torch.tensor(y_per_horizon[h], dtype=torch.long)
+        # Build dataset: mmap path or in-memory TensorDataset
+        if dataset_path is not None:
+            dataset = MMapSequenceDataset(Path(dataset_path))
+        else:
+            target_tensors = []
+            for h in self._prediction_horizons:
+                target_tensors.append(
+                    torch.tensor(y_per_horizon[h], dtype=torch.long)
+                )
+            dataset = TensorDataset(
+                torch.tensor(ctx_train, dtype=torch.long),
+                torch.tensor(lvl_train, dtype=torch.long),
+                torch.tensor(ac_train, dtype=torch.long),
+                *target_tensors,
             )
-
-        dataset = TensorDataset(
-            torch.tensor(ctx_train, dtype=torch.long),
-            torch.tensor(lvl_train, dtype=torch.long),
-            torch.tensor(ac_train, dtype=torch.long),
-            *target_tensors,
-        )
         loader = DataLoader(
             dataset, batch_size=self._config["batch_size"], shuffle=True
         )
@@ -264,20 +278,26 @@ class WaveletGPT(BaseModel):
                 ctx_b = batch[0].to(self._device)
                 lvl_b = batch[1].to(self._device)
                 ac_b = batch[2].to(self._device)
-                # Remaining tensors are targets per horizon
                 target_bs = [batch[3 + i].to(self._device) for i in range(n_horizons)]
 
-                logits_dict = self._net(ctx_b, lvl_b, ac_b)
-
-                loss = torch.tensor(0.0, device=self._device)
-                for i, h in enumerate(self._prediction_horizons):
-                    h_loss = criterion(logits_dict[h], target_bs[i])
-                    loss = loss + weights[h] * h_loss
-
                 optimizer.zero_grad()
-                loss.backward()
+                with torch.autocast(
+                    device_type=self._device.type,
+                    dtype=torch.float16,
+                    enabled=amp_enabled,
+                ):
+                    logits_dict = self._net(ctx_b, lvl_b, ac_b)
+
+                    loss = torch.tensor(0.0, device=self._device)
+                    for i, h in enumerate(self._prediction_horizons):
+                        h_loss = criterion(logits_dict[h], target_bs[i])
+                        loss = loss + weights[h] * h_loss
+
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(self._net.parameters(), 1.0)
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
 
                 total_loss += loss.item()
                 n_batches += 1
@@ -289,11 +309,16 @@ class WaveletGPT(BaseModel):
                 self._net.eval()
                 with torch.no_grad():
                     ctx_v, lvl_v, ac_v = self._parse_x(X_val)
-                    v_logits_dict = self._net(
-                        torch.tensor(ctx_v, dtype=torch.long).to(self._device),
-                        torch.tensor(lvl_v, dtype=torch.long).to(self._device),
-                        torch.tensor(ac_v, dtype=torch.long).to(self._device),
-                    )
+                    with torch.autocast(
+                        device_type=self._device.type,
+                        dtype=torch.float16,
+                        enabled=amp_enabled,
+                    ):
+                        v_logits_dict = self._net(
+                            torch.tensor(ctx_v, dtype=torch.long).to(self._device),
+                            torch.tensor(lvl_v, dtype=torch.long).to(self._device),
+                            torch.tensor(ac_v, dtype=torch.long).to(self._device),
+                        )
                     y_val_per_horizon = self._parse_y_multi(y_val)
                     val_loss = 0.0
                     for h in self._prediction_horizons:
@@ -344,8 +369,13 @@ class WaveletGPT(BaseModel):
     def predict(self, X: NDArray, horizon: int = 1) -> NDArray:
         if self._net is None:
             raise ModelNotTrainedError("Model has not been trained")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
         self._net.eval()
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
             ctx, lvl, ac = self._parse_x(X)
             logits_dict = self._net(
                 torch.tensor(ctx, dtype=torch.long).to(self._device),
@@ -363,8 +393,13 @@ class WaveletGPT(BaseModel):
         """Return softmax probabilities over vocabulary."""
         if self._net is None:
             raise ModelNotTrainedError("Model has not been trained")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
         self._net.eval()
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
             ctx, lvl, ac = self._parse_x(X)
             logits_dict = self._net(
                 torch.tensor(ctx, dtype=torch.long).to(self._device),
@@ -382,8 +417,13 @@ class WaveletGPT(BaseModel):
         """Return predictions for all horizons."""
         if self._net is None:
             raise ModelNotTrainedError("Model has not been trained")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
         self._net.eval()
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
             ctx, lvl, ac = self._parse_x(X)
             logits_dict = self._net(
                 torch.tensor(ctx, dtype=torch.long).to(self._device),
@@ -399,8 +439,13 @@ class WaveletGPT(BaseModel):
         """Return softmax probabilities for all horizons."""
         if self._net is None:
             raise ModelNotTrainedError("Model has not been trained")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
         self._net.eval()
-        with torch.no_grad():
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
             ctx, lvl, ac = self._parse_x(X)
             logits_dict = self._net(
                 torch.tensor(ctx, dtype=torch.long).to(self._device),
@@ -449,11 +494,13 @@ class WaveletGPT(BaseModel):
             horizon_weights = {
                 int(k): v for k, v in config["horizon_weights"].items()
             }
+        use_amp = config.get("use_amp", False)
         instance = cls(
             **net_params,
             **training_params,
             prediction_horizons=prediction_horizons,
             horizon_weights=horizon_weights,
+            use_amp=use_amp,
         )
         instance._net = WaveletGPTNet(
             **net_params, prediction_horizons=prediction_horizons

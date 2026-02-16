@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+import torch
 
 from wavecast.core.exceptions import ModelNotTrainedError
 from wavecast.models.wavelet_gpt import WaveletGPT
@@ -258,3 +259,65 @@ def test_default_horizons_backward_compat():
     """Default prediction_horizons=[1] maintains backward compatibility."""
     model = WaveletGPT(vocab_size=10, context_length=8)
     assert model.prediction_horizons == [1]
+
+
+# --- AMP and MMap tests ---
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_amp_training():
+    """AMP training produces valid results on CUDA."""
+    X, y = _make_gpt_data(n_samples=100, context_length=8, vocab_size=10)
+    model = WaveletGPT(
+        vocab_size=10, context_length=8, embed_dim=16,
+        num_heads=2, num_layers=1, epochs=3, batch_size=32,
+        n_levels=5, n_asset_classes=4, use_amp=True,
+    )
+    metrics = model.fit(X[:80], y[:80], X[80:], y[80:])
+    assert "train_loss" in metrics
+    assert metrics["train_loss"] >= 0
+
+
+def test_amp_disabled_on_cpu():
+    """AMP flag is silently ignored on CPU (no-op)."""
+    X, y = _make_gpt_data(n_samples=60, context_length=8, vocab_size=10)
+    model = WaveletGPT(
+        vocab_size=10, context_length=8, embed_dim=16,
+        num_heads=2, num_layers=1, epochs=2, batch_size=32,
+        n_levels=5, n_asset_classes=4, use_amp=True,
+    )
+    # Force CPU
+    model._device = torch.device("cpu")
+    metrics = model.fit(X[:50], y[:50])
+    assert "train_loss" in metrics
+    assert metrics["train_loss"] >= 0
+
+
+def test_mmap_dataset_with_model(tmp_path):
+    """Model can train from memory-mapped dataset."""
+    from wavecast.data.mmap_dataset import MMapSequenceDataset
+
+    n, ctx_len, vocab = 100, 8, 10
+    rng = np.random.default_rng(42)
+    contexts = rng.integers(0, vocab, size=(n, ctx_len))
+    targets = rng.integers(0, vocab, size=n)
+    levels = rng.integers(0, 5, size=n)
+    asset_classes = rng.integers(0, 4, size=n)
+
+    mmap_path = tmp_path / "mmap"
+    MMapSequenceDataset.save(mmap_path, contexts, targets, levels, asset_classes)
+
+    # Build X/y from the same data (fit() still needs them for parsing/metrics)
+    X = np.column_stack([contexts, levels[:, None], asset_classes[:, None]]).astype(
+        np.float64
+    )
+    y = targets.astype(np.float64)
+
+    model = WaveletGPT(
+        vocab_size=vocab, context_length=ctx_len, embed_dim=16,
+        num_heads=2, num_layers=1, epochs=3, batch_size=32,
+        n_levels=5, n_asset_classes=4,
+    )
+    metrics = model.fit(X[:80], y[:80], dataset_path=mmap_path)
+    assert "train_loss" in metrics
+    assert metrics["train_loss"] >= 0

@@ -106,6 +106,8 @@ class SequenceModelConfig(BaseSettings):
     batch_size: int = 64
     lr: float = 0.0005
     patience: int = 15
+    use_amp: bool = False
+    mmap_dataset_dir: str | None = None
 
 
 class WaveCastConfig(BaseSettings):

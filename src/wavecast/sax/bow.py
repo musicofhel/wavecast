@@ -20,6 +20,10 @@ def extract_words(sax_symbols: str, word_length: int, stride: int = 1) -> list[s
     Returns:
         List of SAX word strings.
     """
+    from wavecast._rust import HAS_RUST, extract_words_rs
+
+    if HAS_RUST and word_length > 0 and stride > 0:
+        return extract_words_rs(sax_symbols, word_length, stride)
     if word_length <= 0 or stride <= 0:
         return []
     words = []
@@ -37,6 +41,10 @@ def build_bow(words: list[str]) -> dict[str, int]:
     Returns:
         Dictionary mapping each word to its count.
     """
+    from wavecast._rust import HAS_RUST, build_bow_rs
+
+    if HAS_RUST:
+        return build_bow_rs(words)
     return dict(Counter(words))
 
 

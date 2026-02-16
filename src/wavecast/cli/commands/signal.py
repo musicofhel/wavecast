@@ -42,6 +42,8 @@ def backtest(
     spread_bps: float = typer.Option(2.0, help="Spread in basis points"),
     slippage_bps: float = typer.Option(1.0, help="Slippage in basis points"),
     confidence_threshold: float = typer.Option(0.0, help="Minimum confidence threshold"),
+    batch_size: int = typer.Option(256, help="Batch size for inference"),
+    use_amp: bool = typer.Option(False, "--use-amp", help="Use mixed-precision inference"),
     output_dir: Path | None = typer.Option(None, "--output-dir", "-o", help="Output directory"),
 ) -> None:
     """Run signal backtest on one or more tickers."""
@@ -49,6 +51,7 @@ def backtest(
     typer.echo(f"  Train end: {train_end}, Test start: {test_start}")
     typer.echo(f"  Costs: commission={commission}, spread={spread_bps}bps, slippage={slippage_bps}bps")
     typer.echo(f"  Confidence threshold: {confidence_threshold}")
+    typer.echo(f"  Batch size: {batch_size}, AMP: {use_amp}")
 
     typer.echo("Full pipeline backtest not yet connected to data loader.")
     typer.echo("Use Python API directly for signal backtesting.")

@@ -78,6 +78,10 @@ class SAXVocabulary:
 
     def encode_sequence(self, words: list[str]) -> list[int]:
         """Encode a list of words to token IDs."""
+        from wavecast._rust import HAS_RUST, encode_batch_rs
+
+        if HAS_RUST:
+            return encode_batch_rs(words, self._word_to_id, UNK_ID)
         return [self.encode(w) for w in words]
 
     def __len__(self) -> int:

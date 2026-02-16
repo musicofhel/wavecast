@@ -51,11 +51,14 @@ dev = [
 wavecast = "wavecast.cli.app:app"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.8,<2.0"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/wavecast"]
+[tool.maturin]
+python-source = "src"
+module-name = "wavecast._wavecast_rs"
+manifest-path = "rust/Cargo.toml"
+features = ["pyo3/extension-module"]
 
 [tool.ruff]
 src = ["src", "tests"]
