@@ -106,3 +106,77 @@ def test_multiple_sequences():
     contexts, _, _, _ = dataset.to_arrays()
     # Each sequence: 30 tokens, 1 level, ctx=10 => 20 samples each => 40 total
     assert contexts.shape[0] == 40
+
+
+# --- Multi-horizon dataset tests ---
+
+
+def test_dataset_max_horizon_basic():
+    """max_horizon=1 produces same results as default."""
+    seq = _make_token_sequence(n_tokens=50, n_levels=1)
+    vocab = SAXVocabulary()
+    ds_default = build_sequence_dataset([seq], vocab, context_length=10)
+    ds_h1 = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=1)
+    assert len(ds_default.samples) == len(ds_h1.samples)
+
+
+def test_dataset_max_horizon_reduces_samples():
+    """Higher max_horizon produces fewer samples (more tokens needed per window)."""
+    seq = _make_token_sequence(n_tokens=50, n_levels=1)
+    vocab = SAXVocabulary()
+    ds_h1 = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=1)
+    ds_h4 = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=4)
+    ds_h8 = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=8)
+    # More horizons need more trailing tokens -> fewer windows
+    assert len(ds_h1.samples) > len(ds_h4.samples)
+    assert len(ds_h4.samples) > len(ds_h8.samples)
+
+
+def test_dataset_max_horizon_targets_populated():
+    """Each sample has targets for all horizons 1..max_horizon."""
+    seq = _make_token_sequence(n_tokens=50, n_levels=1)
+    vocab = SAXVocabulary()
+    max_h = 4
+    ds = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=max_h)
+    for sample in ds.samples:
+        # All horizons 1..max_h should have targets
+        for h in range(1, max_h + 1):
+            assert h in sample.targets
+        # target_token should match horizon=1 target
+        assert sample.target_token == sample.targets[1]
+
+
+def test_dataset_max_horizon_no_out_of_bounds():
+    """Targets never reference out-of-bounds token indices."""
+    seq = _make_token_sequence(n_tokens=20, n_levels=1)
+    vocab = SAXVocabulary()
+    ds = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=8)
+    # With 20 tokens and ctx=10, max index is 19.
+    # Each sample's highest horizon target should be within bounds.
+    for sample in ds.samples:
+        for _h, target_id in sample.targets.items():
+            assert 0 <= target_id < 20  # token IDs are 2-19 from fixture
+
+
+def test_dataset_to_multi_horizon_arrays():
+    """to_multi_horizon_arrays produces correct 2-D target shape."""
+    seq = _make_token_sequence(n_tokens=50, n_levels=1)
+    vocab = SAXVocabulary()
+    horizons = [1, 2, 4, 8]
+    ds = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=8)
+    contexts, targets_2d, levels, asset_classes = ds.to_multi_horizon_arrays(horizons)
+    assert targets_2d.shape == (len(ds.samples), len(horizons))
+    # Column 0 should match target_token (horizon=1)
+    for i, sample in enumerate(ds.samples):
+        assert targets_2d[i, 0] == sample.target_token
+
+
+def test_dataset_max_horizon_exact_count():
+    """Verify exact sample count with max_horizon."""
+    # 50 tokens, ctx=10, max_horizon=4
+    # end_idx = 50 - 10 - (4-1) = 37
+    # Samples = 37
+    seq = _make_token_sequence(n_tokens=50, n_levels=1)
+    vocab = SAXVocabulary()
+    ds = build_sequence_dataset([seq], vocab, context_length=10, max_horizon=4)
+    assert len(ds.samples) == 37

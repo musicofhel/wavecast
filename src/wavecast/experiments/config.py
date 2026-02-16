@@ -45,6 +45,13 @@ class ExperimentConfig:
     # DWT
     dwt_levels: list[int] | None = None
 
+    # Split mode: "single" (walk-forward), "expanding", "rolling"
+    split_mode: str = "single"
+    initial_train_size: int | None = None  # expanding: initial train window (index)
+    train_window_size: int | None = None  # rolling: fixed train size
+    test_window_size: int | None = None  # expanding/rolling: test window size
+    step_size: int | None = None  # expanding/rolling: step between splits
+
     # Multi-asset grouping
     sectors: list[str] | None = None
     cross_sector_training: bool = True

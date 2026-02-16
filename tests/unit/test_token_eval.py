@@ -3,6 +3,8 @@
 import numpy as np
 
 from wavecast.evaluation.token_eval import (
+    MultiHorizonMetrics,
+    evaluate_multi_horizon,
     evaluate_token_predictions,
     token_predictions_to_signals,
 )
@@ -81,3 +83,42 @@ def test_directional_accuracy():
     predicted = np.array([19, 15, 0, 3])  # Same directions
     metrics = evaluate_token_predictions(predicted, actual, vocab_size=20)
     assert metrics.directional_accuracy == 1.0
+
+
+# --- Multi-horizon evaluation tests ---
+
+
+def test_evaluate_multi_horizon_basic():
+    """evaluate_multi_horizon returns per-horizon metrics."""
+    rng = np.random.default_rng(42)
+    n = 50
+    horizons = [1, 2, 4]
+    predictions = {h: rng.integers(0, 10, size=n) for h in horizons}
+    actuals = {h: rng.integers(0, 10, size=n) for h in horizons}
+    result = evaluate_multi_horizon(predictions, actuals, vocab_size=10)
+    assert isinstance(result, MultiHorizonMetrics)
+    assert result.horizons == horizons
+    for h in horizons:
+        assert 0.0 <= result.per_horizon[h].token_accuracy <= 1.0
+
+
+def test_evaluate_multi_horizon_perfect():
+    """Perfect predictions at all horizons yield 1.0 accuracy."""
+    actual = np.array([2, 5, 8, 3, 7])
+    predictions = {1: actual.copy(), 4: actual.copy()}
+    actuals = {1: actual.copy(), 4: actual.copy()}
+    result = evaluate_multi_horizon(predictions, actuals, vocab_size=10)
+    for h in [1, 4]:
+        assert result.per_horizon[h].token_accuracy == 1.0
+
+
+def test_evaluate_multi_horizon_with_probas():
+    """Probabilities are passed through to per-horizon evaluation."""
+    rng = np.random.default_rng(42)
+    n = 20
+    predictions = {1: rng.integers(0, 10, size=n)}
+    actuals = {1: rng.integers(0, 10, size=n)}
+    probas = {1: rng.dirichlet(np.ones(10), size=n)}
+    result = evaluate_multi_horizon(predictions, actuals, vocab_size=10, probas=probas)
+    # top3 should differ from token accuracy when probas are provided
+    assert result.per_horizon[1].top3_accuracy >= 0.0

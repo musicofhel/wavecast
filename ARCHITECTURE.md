@@ -73,7 +73,7 @@ wavelets (dwt, cwt, reconstruction, features)
 │     ↑
 │     dtw (matching, similarity, subsequence, shape_dtw)
 │
-├── sax (paa, sax, bow)
+├── sax (paa, sax, bow, reconstruction)
 │     ↑
 │     tokenizer (vocabulary, tokenizer, dataset)
 │
@@ -87,7 +87,7 @@ evaluation (metrics, backtest, token_eval, reporting)
   ↑
 ├── pipeline (stages, runner, library_builder, token_pipeline)
 │
-└── experiments (config, result, splitter, runner, metrics, storage)
+└── experiments (config, result, splitter, runner, metrics, storage, hpo)
       ↑
 cli (app, commands/* incl. experiment)
 ```
@@ -145,11 +145,30 @@ Input: [token_ids (B, L), level_ids (B,), sector_ids (B,)]
                                                      logits (B, V)
 ```
 
-- D=64, H=4 heads, 3 layers, dropout=0.1
-- ~161K parameters (vocab_size=154 synthetic, ~83 real data)
+- D=128, H=4 heads, 6 layers, dropout=0.2 (Phase 4 Optuna-optimized; was D=64, 3 layers, 0.1)
+- ~600K parameters (vocab_size=154 synthetic, ~83 real data)
 - 7 sector embeddings (tech, finance, energy, healthcare, broad ETF, commodity ETF + legacy)
 - Causal masking ensures autoregressive prediction
 - Only last position used for next-token prediction
+
+### Multi-Horizon Heads (Phase 4)
+
+```
+                           x[:, -1, :] → (B, D)
+                                  │
+                    ┌─────────────┼─────────────┐
+                    ▼             ▼             ▼
+             Linear(D, V)  Linear(D, V)  Linear(D, V)
+             h=1 (tied)    h=2 (indep)   h=4 (indep)  ...
+                    │             │             │
+              logits_h1     logits_h2     logits_h4
+```
+
+- `prediction_horizons=[1,2,4,8]` — configurable list
+- h=1 head: weight-tied with token embedding (regularized)
+- h=2,4,8 heads: independent Linear(D, V) (different distributions per horizon)
+- Multi-horizon training: dataset provides `targets={1: t1, 2: t2, ...}`, loss averaged across horizons
+- Phase 4 finding: h=1 (68.5% acc), h=2 (56.3%), h=4+ plateaus at ~41%
 
 ## Scaling Considerations
 
@@ -166,10 +185,18 @@ Input: [token_ids (B, L), level_ids (B,), sector_ids (B,)]
 - Full experiment suite (78 runs): ~2.5 hours
 - **2025 held-out**: 60.8% token accuracy, 95.8% directional accuracy (no overfitting)
 
-### Future (Phase 4+ — larger universe + sub-hourly)
+### Phase 4 (HPO + multi-horizon — complete)
+- Optuna-optimized: n_segments=512, embed_dim=128, 6 layers, dropout=0.2 (~600K params)
+- Multi-horizon: h=1,2,4,8 with separate classification heads
+- Expanding/rolling window validation for robustness
+- Price reconstruction: SAX tokens → approximate price deltas via inverse PAA
+- Per-sector fine-tuning: hurts ALL 6 sectors — cross-sector definitively confirmed
+- RTX 2060 SUPER handles 600K params comfortably (10s training for 80 epochs)
+
+### Future (Phase 5+ — larger universe + sub-hourly)
 - 50+ assets, sub-hourly intervals (15m, 5m)
-- Multi-horizon prediction (2, 4, 8 steps ahead)
-- May need: gradient checkpointing, mixed precision (fp16), larger embed_dim
+- Signal generation: token predictions → trading signals → backtesting with costs
+- May need: gradient checkpointing, mixed precision (fp16) for larger universe
 - RTX 2060 SUPER 8GB should handle up to ~1M params comfortably
 
 ## File Organization Principles

@@ -43,3 +43,8 @@ class ExperimentResult:
     # Timing
     training_time_seconds: float = 0.0
     timestamp: str = ""
+
+    # Multi-split aggregation (populated when split_mode != "single")
+    n_splits: int = 1
+    token_accuracy_std: float = 0.0
+    directional_accuracy_std: float = 0.0

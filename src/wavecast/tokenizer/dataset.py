@@ -19,6 +19,7 @@ class SequenceSample:
     target_token: int
     level: int
     asset_class_id: int
+    targets: dict[int, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -52,12 +53,54 @@ class SequenceDataset:
 
         return contexts, targets, levels, asset_classes
 
+    def to_multi_horizon_arrays(
+        self, horizons: list[int]
+    ) -> tuple[NDArray, NDArray, NDArray, NDArray]:
+        """Convert to numpy arrays with multi-horizon targets.
+
+        Args:
+            horizons: List of prediction horizons (e.g. [1, 2, 4, 8]).
+
+        Returns:
+            Tuple of (contexts, targets_2d, levels, asset_classes) where
+            targets_2d has shape (n_samples, len(horizons)) with one column
+            per horizon.
+        """
+        if not self.samples:
+            return (
+                np.empty((0, 0), dtype=np.int64),
+                np.empty((0, len(horizons)), dtype=np.int64),
+                np.empty(0, dtype=np.int64),
+                np.empty(0, dtype=np.int64),
+            )
+
+        contexts = np.array(
+            [s.context_tokens for s in self.samples], dtype=np.int64
+        )
+        # Build 2-D target array: one column per horizon
+        targets_2d = np.zeros(
+            (len(self.samples), len(horizons)), dtype=np.int64
+        )
+        for row_idx, sample in enumerate(self.samples):
+            for col_idx, h in enumerate(horizons):
+                targets_2d[row_idx, col_idx] = sample.targets.get(
+                    h, sample.target_token if h == 1 else PAD_ID
+                )
+
+        levels = np.array([s.level for s in self.samples], dtype=np.int64)
+        asset_classes = np.array(
+            [s.asset_class_id for s in self.samples], dtype=np.int64
+        )
+
+        return contexts, targets_2d, levels, asset_classes
+
 
 def build_sequence_dataset(
     token_sequences: list[MultiLevelTokenSequence],
     vocabulary: SAXVocabulary,
     context_length: int = 32,
     asset_class_map: dict[str, int] | None = None,
+    max_horizon: int = 1,
 ) -> SequenceDataset:
     """Build a sequence dataset from tokenized wavelet decompositions.
 
@@ -69,6 +112,8 @@ def build_sequence_dataset(
         vocabulary: SAX vocabulary (used for PAD token ID).
         context_length: Number of tokens in each context window.
         asset_class_map: Optional mapping from ticker to asset class ID.
+        max_horizon: Maximum prediction horizon (default=1 for backward compat).
+            When >1, each sample includes targets for horizons 1..max_horizon.
 
     Returns:
         SequenceDataset with all samples.
@@ -91,15 +136,26 @@ def build_sequence_dataset(
                 tokens = padded
 
             # Sliding window: context[i:i+ctx_len] -> target[i+ctx_len]
-            for i in range(len(tokens) - context_length):
+            # With max_horizon, ensure we have room for all horizon targets
+            end_idx = len(tokens) - context_length - (max_horizon - 1)
+            for i in range(max(0, end_idx)):
                 context = tokens[i : i + context_length]
                 target = tokens[i + context_length]
+
+                # Build targets dict for all horizons
+                targets: dict[int, int] = {}
+                for h in range(1, max_horizon + 1):
+                    target_idx = i + context_length + (h - 1)
+                    if target_idx < len(tokens):
+                        targets[h] = tokens[target_idx]
+
                 dataset.samples.append(
                     SequenceSample(
                         context_tokens=context,
                         target_token=target,
                         level=level,
                         asset_class_id=asset_class_id,
+                        targets=targets,
                     )
                 )
 

@@ -17,7 +17,11 @@ from .base import BaseModel
 
 
 class WaveletGPTNet(nn.Module):
-    """Causal transformer for predicting next SAX word."""
+    """Causal transformer for predicting next SAX word.
+
+    Supports multi-horizon prediction: separate classification heads for
+    each prediction horizon (e.g. 1, 2, 4, 8 steps ahead).
+    """
 
     def __init__(
         self,
@@ -29,10 +33,12 @@ class WaveletGPTNet(nn.Module):
         dropout: float = 0.1,
         n_levels: int = 6,
         n_asset_classes: int = 7,
+        prediction_horizons: list[int] | None = None,
     ) -> None:
         super().__init__()
         self.context_length = context_length
         self.vocab_size = vocab_size
+        self.prediction_horizons = prediction_horizons or [1]
 
         # Embeddings
         self.token_embed = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
@@ -54,16 +60,22 @@ class WaveletGPTNet(nn.Module):
         )
         self.ln_f = nn.LayerNorm(embed_dim)
 
-        # Classification head -- weight tying with token embeddings
-        self.head = nn.Linear(embed_dim, vocab_size, bias=False)
-        self.head.weight = self.token_embed.weight  # Weight tying
+        # Classification heads — one per horizon.
+        # Horizon=1 head is weight-tied with token embeddings.
+        # Additional horizons get independent heads.
+        self.heads = nn.ModuleDict()
+        for h in self.prediction_horizons:
+            head = nn.Linear(embed_dim, vocab_size, bias=False)
+            if h == 1:
+                head.weight = self.token_embed.weight  # Weight tying
+            self.heads[str(h)] = head
 
     def forward(
         self,
         token_ids: torch.Tensor,  # (batch, context_length)
         level_ids: torch.Tensor,  # (batch,)
         asset_class_ids: torch.Tensor,  # (batch,)
-    ) -> torch.Tensor:
+    ) -> dict[int, torch.Tensor]:
         batch_size, seq_len = token_ids.shape
         device = token_ids.device
 
@@ -86,16 +98,22 @@ class WaveletGPTNet(nn.Module):
         x = self.transformer(x, mask=causal_mask, is_causal=True)
         x = self.ln_f(x)
 
-        # Only take the last position's output for next-token prediction
-        logits = self.head(x[:, -1, :])  # (batch, vocab_size)
-        return logits
+        # Last position's hidden state for all heads
+        last_hidden = x[:, -1, :]  # (batch, embed_dim)
+
+        logits_dict: dict[int, torch.Tensor] = {}
+        for h in self.prediction_horizons:
+            logits_dict[h] = self.heads[str(h)](last_hidden)  # (batch, vocab_size)
+
+        return logits_dict
 
 
 class WaveletGPT(BaseModel):
     """WaveletGPT wrapper conforming to BaseModel interface.
 
     X format: each row is [context_token_0, ..., context_token_{L-1}, level_id, asset_class_id]
-    y format: target token ID (integer)
+    y format: target token ID (integer) for single-horizon,
+              or column-stacked targets for multi-horizon
     """
 
     def __init__(
@@ -112,7 +130,11 @@ class WaveletGPT(BaseModel):
         batch_size: int = 64,
         learning_rate: float = 0.0003,
         patience: int = 10,
+        prediction_horizons: list[int] | None = None,
+        horizon_weights: dict[int, float] | None = None,
     ) -> None:
+        self._prediction_horizons = prediction_horizons or [1]
+        self._horizon_weights = horizon_weights
         self._config = {
             "vocab_size": vocab_size,
             "context_length": context_length,
@@ -126,7 +148,12 @@ class WaveletGPT(BaseModel):
             "batch_size": batch_size,
             "learning_rate": learning_rate,
             "patience": patience,
+            "prediction_horizons": self._prediction_horizons,
         }
+        if self._horizon_weights is not None:
+            self._config["horizon_weights"] = {
+                str(k): v for k, v in self._horizon_weights.items()
+            }
         self._net: WaveletGPTNet | None = None
         self._device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu"
@@ -135,6 +162,10 @@ class WaveletGPT(BaseModel):
     @property
     def name(self) -> str:
         return "wavelet_gpt"
+
+    @property
+    def prediction_horizons(self) -> list[int]:
+        return self._prediction_horizons
 
     def _parse_x(
         self, X: NDArray
@@ -145,6 +176,23 @@ class WaveletGPT(BaseModel):
         levels = X[:, ctx_len].astype(np.int64)
         asset_classes = X[:, ctx_len + 1].astype(np.int64)
         return contexts, levels, asset_classes
+
+    def _parse_y_multi(
+        self, y: NDArray
+    ) -> dict[int, NDArray]:
+        """Parse y into per-horizon target arrays.
+
+        For single-horizon (y is 1-D): returns {horizons[0]: y}.
+        For multi-horizon (y is 2-D with columns matching horizons): returns
+        {horizon: y[:, col]} for each horizon.
+        """
+        if y.ndim == 1:
+            return {self._prediction_horizons[0]: y.astype(np.int64)}
+        # Multi-horizon: columns correspond to self._prediction_horizons
+        result: dict[int, NDArray] = {}
+        for col_idx, h in enumerate(self._prediction_horizons):
+            result[h] = y[:, col_idx].astype(np.int64)
+        return result
 
     def fit(
         self,
@@ -163,6 +211,7 @@ class WaveletGPT(BaseModel):
             dropout=self._config["dropout"],
             n_levels=self._config["n_levels"],
             n_asset_classes=self._config["n_asset_classes"],
+            prediction_horizons=self._prediction_horizons,
         ).to(self._device)
 
         optimizer = torch.optim.AdamW(
@@ -170,15 +219,30 @@ class WaveletGPT(BaseModel):
         )
         criterion = nn.CrossEntropyLoss(ignore_index=0)  # ignore PAD
 
+        # Resolve horizon weights
+        weights: dict[int, float] = {}
+        if self._horizon_weights is not None:
+            weights = self._horizon_weights
+        else:
+            for h in self._prediction_horizons:
+                weights[h] = 1.0
+
         # Prepare data
         ctx_train, lvl_train, ac_train = self._parse_x(X_train)
-        y_int = y_train.astype(np.int64)
+        y_per_horizon = self._parse_y_multi(y_train)
+
+        # Build tensors for each horizon target
+        target_tensors = []
+        for h in self._prediction_horizons:
+            target_tensors.append(
+                torch.tensor(y_per_horizon[h], dtype=torch.long)
+            )
 
         dataset = TensorDataset(
             torch.tensor(ctx_train, dtype=torch.long),
             torch.tensor(lvl_train, dtype=torch.long),
             torch.tensor(ac_train, dtype=torch.long),
-            torch.tensor(y_int, dtype=torch.long),
+            *target_tensors,
         )
         loader = DataLoader(
             dataset, batch_size=self._config["batch_size"], shuffle=True
@@ -189,19 +253,26 @@ class WaveletGPT(BaseModel):
         best_state = None
         avg_loss = 0.0
 
+        n_horizons = len(self._prediction_horizons)
+
         for _epoch in range(self._config["epochs"]):
             self._net.train()
             total_loss = 0.0
             n_batches = 0
 
-            for ctx_b, lvl_b, ac_b, y_b in loader:
-                ctx_b = ctx_b.to(self._device)
-                lvl_b = lvl_b.to(self._device)
-                ac_b = ac_b.to(self._device)
-                y_b = y_b.to(self._device)
+            for batch in loader:
+                ctx_b = batch[0].to(self._device)
+                lvl_b = batch[1].to(self._device)
+                ac_b = batch[2].to(self._device)
+                # Remaining tensors are targets per horizon
+                target_bs = [batch[3 + i].to(self._device) for i in range(n_horizons)]
 
-                logits = self._net(ctx_b, lvl_b, ac_b)
-                loss = criterion(logits, y_b)
+                logits_dict = self._net(ctx_b, lvl_b, ac_b)
+
+                loss = torch.tensor(0.0, device=self._device)
+                for i, h in enumerate(self._prediction_horizons):
+                    h_loss = criterion(logits_dict[h], target_bs[i])
+                    loss = loss + weights[h] * h_loss
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -218,17 +289,20 @@ class WaveletGPT(BaseModel):
                 self._net.eval()
                 with torch.no_grad():
                     ctx_v, lvl_v, ac_v = self._parse_x(X_val)
-                    v_logits = self._net(
+                    v_logits_dict = self._net(
                         torch.tensor(ctx_v, dtype=torch.long).to(self._device),
                         torch.tensor(lvl_v, dtype=torch.long).to(self._device),
                         torch.tensor(ac_v, dtype=torch.long).to(self._device),
                     )
-                    val_loss = criterion(
-                        v_logits,
-                        torch.tensor(
-                            y_val.astype(np.int64), dtype=torch.long
-                        ).to(self._device),
-                    ).item()
+                    y_val_per_horizon = self._parse_y_multi(y_val)
+                    val_loss = 0.0
+                    for h in self._prediction_horizons:
+                        y_val_h = torch.tensor(
+                            y_val_per_horizon[h], dtype=torch.long
+                        ).to(self._device)
+                        val_loss += weights[h] * criterion(
+                            v_logits_dict[h], y_val_h
+                        ).item()
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
@@ -245,17 +319,19 @@ class WaveletGPT(BaseModel):
         if best_state is not None:
             self._net.load_state_dict(best_state)
 
-        # Compute final metrics
+        # Compute final metrics (horizon=1 or first horizon for backward compat)
         self._net.eval()
+        primary_h = self._prediction_horizons[0]
         with torch.no_grad():
             ctx_t, lvl_t, ac_t = self._parse_x(X_train)
-            logits = self._net(
+            logits_dict = self._net(
                 torch.tensor(ctx_t, dtype=torch.long).to(self._device),
                 torch.tensor(lvl_t, dtype=torch.long).to(self._device),
                 torch.tensor(ac_t, dtype=torch.long).to(self._device),
             )
-            preds = logits.argmax(dim=-1).cpu().numpy()
-            accuracy = float(np.mean(preds == y_int))
+            preds = logits_dict[primary_h].argmax(dim=-1).cpu().numpy()
+            y_primary = y_per_horizon[primary_h]
+            accuracy = float(np.mean(preds == y_primary))
 
         metrics: dict[str, float] = {
             "train_loss": avg_loss,
@@ -265,32 +341,76 @@ class WaveletGPT(BaseModel):
             metrics["val_loss"] = best_val_loss
         return metrics
 
-    def predict(self, X: NDArray) -> NDArray:
+    def predict(self, X: NDArray, horizon: int = 1) -> NDArray:
         if self._net is None:
             raise ModelNotTrainedError("Model has not been trained")
         self._net.eval()
         with torch.no_grad():
             ctx, lvl, ac = self._parse_x(X)
-            logits = self._net(
+            logits_dict = self._net(
                 torch.tensor(ctx, dtype=torch.long).to(self._device),
                 torch.tensor(lvl, dtype=torch.long).to(self._device),
                 torch.tensor(ac, dtype=torch.long).to(self._device),
             )
-        return logits.argmax(dim=-1).cpu().numpy()
+        if horizon not in logits_dict:
+            raise ValueError(
+                f"Horizon {horizon} not available. "
+                f"Available horizons: {self._prediction_horizons}"
+            )
+        return logits_dict[horizon].argmax(dim=-1).cpu().numpy()
 
-    def predict_proba(self, X: NDArray) -> NDArray:
+    def predict_proba(self, X: NDArray, horizon: int = 1) -> NDArray:
         """Return softmax probabilities over vocabulary."""
         if self._net is None:
             raise ModelNotTrainedError("Model has not been trained")
         self._net.eval()
         with torch.no_grad():
             ctx, lvl, ac = self._parse_x(X)
-            logits = self._net(
+            logits_dict = self._net(
                 torch.tensor(ctx, dtype=torch.long).to(self._device),
                 torch.tensor(lvl, dtype=torch.long).to(self._device),
                 torch.tensor(ac, dtype=torch.long).to(self._device),
             )
-        return torch.softmax(logits, dim=-1).cpu().numpy()
+        if horizon not in logits_dict:
+            raise ValueError(
+                f"Horizon {horizon} not available. "
+                f"Available horizons: {self._prediction_horizons}"
+            )
+        return torch.softmax(logits_dict[horizon], dim=-1).cpu().numpy()
+
+    def predict_all_horizons(self, X: NDArray) -> dict[int, NDArray]:
+        """Return predictions for all horizons."""
+        if self._net is None:
+            raise ModelNotTrainedError("Model has not been trained")
+        self._net.eval()
+        with torch.no_grad():
+            ctx, lvl, ac = self._parse_x(X)
+            logits_dict = self._net(
+                torch.tensor(ctx, dtype=torch.long).to(self._device),
+                torch.tensor(lvl, dtype=torch.long).to(self._device),
+                torch.tensor(ac, dtype=torch.long).to(self._device),
+            )
+        return {
+            h: logits.argmax(dim=-1).cpu().numpy()
+            for h, logits in logits_dict.items()
+        }
+
+    def predict_proba_all_horizons(self, X: NDArray) -> dict[int, NDArray]:
+        """Return softmax probabilities for all horizons."""
+        if self._net is None:
+            raise ModelNotTrainedError("Model has not been trained")
+        self._net.eval()
+        with torch.no_grad():
+            ctx, lvl, ac = self._parse_x(X)
+            logits_dict = self._net(
+                torch.tensor(ctx, dtype=torch.long).to(self._device),
+                torch.tensor(lvl, dtype=torch.long).to(self._device),
+                torch.tensor(ac, dtype=torch.long).to(self._device),
+            )
+        return {
+            h: torch.softmax(logits, dim=-1).cpu().numpy()
+            for h, logits in logits_dict.items()
+        }
 
     def save(self, path: Path) -> None:
         if self._net is None:
@@ -323,8 +443,21 @@ class WaveletGPT(BaseModel):
                 "n_asset_classes",
             ]
         }
-        instance = cls(**net_params, **training_params)
-        instance._net = WaveletGPTNet(**net_params).to(instance._device)
+        prediction_horizons = config.get("prediction_horizons", [1])
+        horizon_weights = None
+        if "horizon_weights" in config:
+            horizon_weights = {
+                int(k): v for k, v in config["horizon_weights"].items()
+            }
+        instance = cls(
+            **net_params,
+            **training_params,
+            prediction_horizons=prediction_horizons,
+            horizon_weights=horizon_weights,
+        )
+        instance._net = WaveletGPTNet(
+            **net_params, prediction_horizons=prediction_horizons
+        ).to(instance._device)
         state = torch.load(
             path / "model.pt", map_location="cpu", weights_only=True
         )

@@ -67,7 +67,7 @@ Quick reference for the domain-specific terms used throughout the codebase.
 
 | Term | Definition | Where in code |
 |------|-----------|---------------|
-| **WaveletGPT** | Causal transformer for next-SAX-word prediction. ~161K params. | `models/wavelet_gpt.py` |
+| **WaveletGPT** | Causal transformer for next-SAX-word prediction. ~600K params (Phase 4 Optuna: D=128, 6 layers). Supports multi-horizon prediction. | `models/wavelet_gpt.py` |
 | **Weight tying** | Sharing weight matrix between token embedding and output classification head. Reduces params and regularizes. | `WaveletGPTNet.__init__` |
 | **Causal mask** | Upper-triangular boolean mask that prevents attention from seeing future tokens. Makes the model autoregressive. | `WaveletGPTNet.forward` |
 | **WaveletLSTM** | Multi-branch LSTM with one branch per DWT level. Each branch processes that level's coefficients independently. | `models/wavelet_lstm.py` |
@@ -103,3 +103,16 @@ Quick reference for the domain-specific terms used throughout the codebase.
 | **LEGACY_UNIVERSE** | Original 19-asset universe from Phase 1-2 (equities, crypto, forex, commodity ETFs). Accessible via `get_universe("legacy")`. | `core/universe.py` |
 | **Sector** | Sector-based classification: TECH, FINANCE, ENERGY, HEALTHCARE, BROAD_ETF, COMMODITY_ETF. Used for sector embeddings in WaveletGPT. | `core/types.py:Sector` |
 | **PHASE3_UNIVERSE** | Alias for DEFAULT_UNIVERSE. 20 US assets across 6 sectors: tech (5), finance (3), energy (3), healthcare (3), broad ETFs (2), commodity ETFs (4). | `core/universe.py` |
+
+## Phase 4 Domain
+
+| Term | Definition | Where in code |
+|------|-----------|---------------|
+| **Multi-horizon prediction** | Predicting multiple steps ahead (h=1,2,4,8) simultaneously. Each horizon gets a separate classification head. h=1-2 useful, h=4+ plateaus. | `models/wavelet_gpt.py` |
+| **Prediction horizon (h)** | Number of steps ahead to predict. h=1 = next token, h=2 = two tokens ahead, etc. | `SequenceModelConfig.prediction_horizons` |
+| **Expanding window** | Validation strategy where training set grows: [0,T1], [0,T2], [0,T3]... while test windows slide forward. More data per split than rolling. | `experiments/splitter.py:expanding_window_split` |
+| **Rolling window** | Validation strategy with fixed-size training window that slides: [T0,T1], [T1,T2]... Tests non-stationarity. | `experiments/splitter.py:rolling_window_split` |
+| **Optuna HPO** | Hyperparameter optimization via Optuna's TPE sampler. Used for SAX params (F4) and model architecture (F5). | `experiments/hpo.py` |
+| **Price reconstruction** | Inverse SAX → PAA → approximate price deltas. Maps predicted tokens back to approximate price movements. | `sax/reconstruction.py` |
+| **PriceReconstructionResult** | Dataclass containing reconstructed deltas, directions (+1/-1/0), confidence, and breakpoint info. | `sax/reconstruction.py` |
+| **Per-sector fine-tuning** | Training separate models per sector. Phase 4 proved this hurts ALL 6 sectors — cross-sector is definitively optimal. | `scripts/run_F6.py` |

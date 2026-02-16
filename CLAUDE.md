@@ -7,7 +7,7 @@ Wavelet-shapelet financial forecasting library with SAX tokenization and transfo
 ```bash
 cd ~/wavecast
 source .venv/bin/activate
-pytest tests/ -q          # 230 tests, ~8s on GPU
+pytest tests/ -q          # 303 tests, ~9s on GPU
 ruff check src/ tests/    # 0 errors
 ```
 
@@ -30,22 +30,22 @@ src/wavecast/
   dtw/          — DTW matching, ShapeDTW, similarity, subsequence search
   fractal/      — Hurst exponent, MFDFA, regime detection, self-similarity, HurstCache
   features/     — pipeline combining wavelet+shapelet+fractal+market+SAX features
-  sax/          — PAA, SAX transform, Bag-of-Words + TF-IDF
+  sax/          — PAA, SAX transform, Bag-of-Words + TF-IDF, price reconstruction
   tokenizer/    — SAXVocabulary, WaveletSAXTokenizer, sequence dataset builder
   models/       — WaveletLSTM, WaveletGPT, XGBoost, ensemble, registry
   evaluation/   — metrics, walk-forward backtest, token prediction eval
-  experiments/  — ExperimentConfig, ExperimentResult, Runner, Splitter, Metrics, Storage
+  experiments/  — ExperimentConfig, ExperimentResult, Runner, Splitter, Metrics, Storage, HPO
   pipeline/     — stage orchestration, runner, library builder, token pipeline
   cli/          — Typer CLI: data, discover, match, analyze, forecast, library, backtest, sax, tokenize, experiment
   viz/          — scalogram, shapelet gallery, DTW alignment, forecast, fractal plots
 tests/
-  unit/         — 41 test files, 229 unit tests
+  unit/         — 45 test files, 302 unit tests
   integration/  — 1 pipeline integration test
   fixtures/     — deterministic generators (seed=42)
-scripts/        — experiment runners (run_C1.py-run_C7.py, run_D1_D4.py), fetch_phase3_universe.py
+scripts/        — experiment runners (run_C1-C7, run_D1_D4, run_F1/F4/F5/F6), fetch_phase3_universe.py
 ```
 
-90 source files, 48 test files, 230 tests passing.
+92 source files, 52 test files, 303 tests passing.
 
 ## Architecture: Two Pipelines
 
@@ -64,9 +64,10 @@ data → decompose → SAX → tokenize → train WaveletGPT → evaluate
 ```
 - DWT coefficients → PAA → SAX symbols → sliding window words → vocabulary
 - Bag-of-Words + TF-IDF for cross-asset similarity
-- WaveletGPT: causal transformer (token+position+level+asset_class embeddings)
-- Weight tying between token embedding and output head
-- Evaluate: token accuracy, top-3 accuracy, directional accuracy
+- WaveletGPT: causal transformer (token+position+level+sector embeddings)
+- Weight tying between token embedding and output head (h=1); independent heads for h=2,4,8
+- Multi-horizon prediction: horizons=[1,2,4,8], h=1-2 useful, h=4+ plateaus
+- Evaluate: token accuracy, top-3 accuracy, directional accuracy (per-horizon)
 - Phase 3 proved P2 dominates P1 — no ensemble benefit
 
 ### Experiment Framework (Phase 3)
@@ -110,8 +111,13 @@ from wavecast.experiments.runner import ExperimentRunner
 from wavecast.experiments.splitter import walk_forward_split
 from wavecast.experiments.metrics import level0_directional_accuracy, compute_bootstrap_ci, compute_baselines
 from wavecast.experiments.storage import save_results, load_results, compare_results
+from wavecast.experiments.splitter import expanding_window_split, rolling_window_split
+from wavecast.experiments.hpo import run_sax_hpo, run_architecture_hpo
 from wavecast.data.decomposition_cache import DecompositionCache
 from wavecast.fractal.hurst import rolling_hurst_with_regimes, HurstCache
+
+# Phase 4
+from wavecast.sax.reconstruction import reconstruct_price_delta, tokens_to_direction, PriceReconstructionResult
 ```
 
 ## CLI
@@ -129,7 +135,7 @@ wavecast library build --universe default
 wavecast backtest run AAPL
 
 # Phase 2
-wavecast sax transform AAPL --segments 256 --alphabet 7
+wavecast sax transform AAPL --segments 512 --alphabet 7
 wavecast sax bow AAPL --word-length 4
 wavecast tokenize vocab --universe default
 wavecast tokenize run --universe default --epochs 80
@@ -139,6 +145,9 @@ wavecast experiment run --tickers AAPL,MSFT --train-end 2023-12-31 --test-start 
 wavecast experiment sweep --param alphabet_size --values 3,5,7,9,11
 wavecast experiment show C1_granularity
 wavecast experiment compare C1_granularity C2_level_contribution
+
+# Phase 4
+wavecast sax reconstruct AAPL              # price reconstruction from SAX tokens
 ```
 
 ## Config System
@@ -150,9 +159,9 @@ Pydantic `BaseSettings` hierarchy in `core/config.py`:
 - `FractalConfig` — Hurst method/window, MFDFA q-range, regime thresholds
 - `ModelConfig` — LSTM/XGBoost hyperparams, ensemble weights
 - `BacktestConfig` — capital, position size, commission, walk-forward splits
-- `SAXConfig` — n_segments=256, alphabet_size=7, word_length=4, word_stride=1
+- `SAXConfig` — n_segments=512, alphabet_size=7, word_length=4, word_stride=1 (Phase 4 Optuna)
 - `TokenizerConfig` — context_length=16, min_word_freq=1, max_vocab_size=100
-- `SequenceModelConfig` — embed_dim=64, num_heads=4, num_layers=3, dropout=0.1, epochs=80, lr=0.0005, patience=15 (optimal dwt_levels=[1,2,5])
+- `SequenceModelConfig` — embed_dim=128, num_heads=4, num_layers=6, dropout=0.2, epochs=80, lr=0.0005, patience=15 (Phase 4 Optuna, dwt_levels=[1,2,5])
 - `WaveCastConfig` — top-level aggregator with data/library/model/cache dirs
 - `ExperimentConfig` — full experiment specification (tickers, interval, SAX/model params, split dates)
 - `ExperimentResult` — metrics + CIs + baselines + per-asset/sector/level breakdowns
@@ -194,7 +203,7 @@ WaveCastError
 - `subsequence_search()` raises DTWError when query > series length
 - `AssetClass.value` returns strings ('equity', etc.) not ints — use a mapping dict for numeric IDs. `Sector.value` same ('tech', 'finance', etc.)
 - `SAXVocabulary` supports `len()` and `.size` property — both return total including PAD+UNK
-- `build_sequence_dataset()` expects `MultiLevelTokenSequence` objects, not raw dicts
+- `build_sequence_dataset()` expects `MultiLevelTokenSequence` objects, not raw dicts. Accepts `max_horizon` param for multi-step prediction.
 - WaveletGPT X format: `[context_token_0, ..., context_token_{L-1}, level_id, asset_class_id]`
 - Weight tying means WaveletGPTNet vocab_size affects both embedding and output head simultaneously
 - Cached OHLCV parquets use `{ticker}_1h_ohlcv.parquet` format (6 cols) — ExperimentRunner handles loading
@@ -216,16 +225,17 @@ ruff check src/ tests/                                    # lint
 
 ## Benchmarks (RTX 2060 SUPER)
 
-- Full test suite: 230 tests in 8s (was 2m20s CPU-only before GPU)
-- WaveletGPT 6 tests: 4s (was 2m16s CPU-only)
-- WaveletGPT training (161K params, 610 samples, 80 epochs): 3.9s
+- Full test suite: 303 tests in 9s (was 2m20s CPU-only before GPU)
+- WaveletGPT tests: ~5s
+- WaveletGPT training (161K-600K params, 80 epochs): 4-10s depending on architecture
 - SAX+BoW+TF-IDF on 7 assets x 2000 points: <1s
 - Full 20-ticker experiment run (hourly, all levels): ~3-4 min
 - Phase 3 full experiment suite (78 runs): ~2.5 hours
 
 ## Phase 3 Research Results (real data, 20 assets, hourly bars)
 
-**Optimal config**: alphabet=7, levels=[1,2,5], context=16, vocab=100, min_freq=1, cross-sector training
+**Phase 3 config**: alphabet=7, levels=[1,2,5], context=16, vocab=100, min_freq=1, cross-sector training
+**Phase 4 Optuna-optimized**: n_segments=512, embed_dim=128, num_layers=6, dropout=0.2, horizons=[1,2]
 
 | Question | Answer |
 |----------|--------|
@@ -244,6 +254,13 @@ ruff check src/ tests/                                    # lint
 - Top sectors: broad ETFs (62.5%), commodity ETFs (62.3%), tech (61.6%)
 - Persistence baseline: 36.0%, momentum baseline: 38.0% — model lift: +56-60 pp
 - No overfitting detected: 2025 results consistent with 2024 validation
+
+### Phase 4 Results (HPO + Multi-Horizon)
+- **Optuna SAX**: n_segments=512 (was 256) — higher resolution helps
+- **Optuna architecture**: embed_dim=128, num_layers=6, dropout=0.2 — larger model preferred
+- **Multi-horizon**: h=1 (68.5% token acc), h=2 (56.3%), h=4+ plateaus at ~41%
+- **Per-sector fine-tuning**: hurts ALL 6 sectors — cross-sector training definitively confirmed
+- **Expanding window**: results robust across multiple evaluation windows
 
 ## Data Source
 

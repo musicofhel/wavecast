@@ -60,20 +60,30 @@ Connected to Massive.com API, ran 78 experiments across 7 research questions on 
 - Multi-level [1,2,5] outperforms single-level — **confirmed** (levels 3&4 removal improved accuracy)
 - 2025 held-out: 60.8% token acc, 95.8% dir acc — **no overfitting** (consistent with 2024)
 
+### Phase 4: Hyperparameter Optimization & Multi-Horizon (v0.4.0)
+Multi-horizon prediction, Optuna HPO, expanding window validation, price reconstruction.
+
+- [x] F1: Multi-horizon WaveletGPT — predict 1, 2, 4, 8 steps ahead with separate heads
+- [x] F2: Expanding/rolling window splitter — multiple train/test splits with aggregated metrics
+- [x] F3: Price reconstruction — inverse SAX/PAA to approximate price deltas + directional signals
+- [x] F4: Optuna SAX HPO (30 trials) → n_segments=512 (was 256), word_length=4, word_stride=1 confirmed
+- [x] F5: Optuna architecture HPO (25 trials) → embed_dim=128, num_layers=6, dropout=0.2
+- [x] F6: Per-sector fine-tuning → hurts ALL 6 sectors, cross-sector definitively confirmed
+- [x] F7: Multi-horizon experiments → h=1 (68.5%), h=2 (56.3%), h=4+ plateaus at ~41%
+- [x] 303 tests passing (73 new)
+
+### Phase 4 Key Findings
+- **n_segments=512** dominates 256 — higher SAX resolution captures finer patterns
+- **Larger model preferred**: embed_dim=128, 6 layers, dropout=0.2 (was 64, 3 layers, 0.1)
+- **Multi-horizon sweet spot is h=1 to h=2**: h=4+ token accuracy plateaus at ~41% (near persistence baseline), but directional accuracy stays 94-97% across all horizons
+- **Per-sector fine-tuning hurts ALL sectors**: universal cross-sector model is definitively optimal (resolves Phase 3 C3 inconclusive result for commodity ETFs)
+- **Expanding window validation**: results robust across multiple evaluation windows
+
 ## Current Focus
 
-Phase 3 is complete. Next priorities are Phase 4 (hyperparameter optimization) and Phase 5 (signal generation).
+Phase 4 is complete. Next priority is Phase 5 (signal generation & backtesting).
 
 ## Future Phases
-
-### Phase 4: Hyperparameter Optimization & Multi-Horizon
-- [ ] Multi-horizon prediction: extend WaveletGPT to predict 2, 4, 8 steps ahead (not just next token)
-- [ ] Price reconstruction: map SAX token predictions back to approximate price movements via inverse PAA/DWT
-- [ ] Expanding window validation: replace single train/test split with rolling/expanding windows
-- [ ] Optuna for remaining fixed params: n_segments, word_length, word_stride
-- [ ] Optuna for WaveletGPT architecture (embed_dim, num_heads, num_layers)
-- [ ] Per-sector fine-tuning (commodity ETFs showed marginal benefit from sector-only training)
-- [ ] Regime-conditional models (low priority — Phase 3 C6 showed <2% variation across regimes)
 
 ### Phase 5: Signal Generation & Backtesting
 - [ ] Token predictions → directional signals (buy/sell/hold)
@@ -117,13 +127,15 @@ Phase 3 is complete. Next priorities are Phase 4 (hyperparameter optimization) a
 6. **Regime dependence**: **Remarkably consistent across regimes.** 82.7% overall, mean-reverting slightly best (83.4%), trending uncertain (81.8% but wide CI due to only 55 samples). Beats persistence baseline in all regimes (+5-11%).
 7. **Ensemble value**: **No benefit.** P2 (WaveletGPT on hourly) massively outperforms P1 (LSTM+XGB on daily) — 82-91% vs 51-57% directional accuracy. Combining them hurts. Error correlation near-zero but P1 signal too weak to contribute.
 
-## Open Research Questions (Phase 4+)
+## Open Research Questions (Phase 5+)
 
-1. **n_segments sensitivity**: Fixed at 256 for hourly — is this optimal? Interacts with alphabet_size.
-2. **word_length sensitivity**: Fixed at 4 — would 3 or 5 change the vocabulary characteristics?
-3. **Architecture search**: embed_dim=64, 4 heads, 3 layers held constant — room for improvement?
-4. **Per-sector fine-tuning**: Broad ETFs consistently outperform — would sector-specific heads help?
-5. **Temporal stability**: ~~Does the 2024 test accuracy hold on 2025?~~ **Answered by D3**: Yes — 60.8% token acc (vs 63.0% on 2024), 95.8% dir acc (vs 99.7%). Modest degradation, no overfitting.
+1. ~~**n_segments sensitivity**~~: **Answered by F4**: n_segments=512 optimal (was 256). Higher resolution helps.
+2. ~~**word_length sensitivity**~~: **Answered by F4**: word_length=4 confirmed optimal via Optuna.
+3. ~~**Architecture search**~~: **Answered by F5**: embed_dim=128, 6 layers, dropout=0.2 (larger model preferred).
+4. ~~**Per-sector fine-tuning**~~: **Answered by F6**: Hurts ALL 6 sectors. Cross-sector definitively confirmed.
+5. ~~**Temporal stability**~~: **Answered by D3**: Yes — 60.8% token acc (vs 63.0% on 2024), 95.8% dir acc (vs 99.7%).
+6. **Multi-horizon utility**: h=1-2 useful for trading signals. h=4+ only useful for directional bias, not token-level prediction.
+7. **Signal-to-PnL gap**: High directional accuracy does not guarantee profitability. Transaction costs, position sizing, and slippage need investigation.
 
 ## Non-Goals (Explicit)
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,6 +15,16 @@ class TokenPredictionMetrics:
     top3_accuracy: float
     directional_accuracy: float
     confusion_matrix: NDArray[np.float64]
+
+
+@dataclass
+class MultiHorizonMetrics:
+    """Metrics for multi-horizon token prediction."""
+    per_horizon: dict[int, TokenPredictionMetrics] = field(default_factory=dict)
+
+    @property
+    def horizons(self) -> list[int]:
+        return sorted(self.per_horizon.keys())
 
 
 def evaluate_token_predictions(
@@ -87,6 +97,32 @@ def evaluate_token_predictions(
         directional_accuracy=directional_accuracy,
         confusion_matrix=cm,
     )
+
+
+def evaluate_multi_horizon(
+    predictions: dict[int, NDArray],
+    actuals: dict[int, NDArray],
+    vocab_size: int,
+    probas: dict[int, NDArray] | None = None,
+) -> MultiHorizonMetrics:
+    """Evaluate predictions across multiple horizons.
+
+    Args:
+        predictions: Dict of {horizon: predicted_token_ids} arrays.
+        actuals: Dict of {horizon: actual_token_ids} arrays.
+        vocab_size: Size of vocabulary.
+        probas: Optional dict of {horizon: probability_matrix} arrays.
+
+    Returns:
+        MultiHorizonMetrics with per-horizon TokenPredictionMetrics.
+    """
+    result = MultiHorizonMetrics()
+    for h in sorted(predictions.keys()):
+        proba_h = probas.get(h) if probas is not None else None
+        result.per_horizon[h] = evaluate_token_predictions(
+            predictions[h], actuals[h], vocab_size, proba_h
+        )
+    return result
 
 
 def token_predictions_to_signals(
