@@ -249,6 +249,17 @@ class AssetClass(str, Enum):
     COMMODITY = "commodity"
 
 
+class Sector(str, Enum):
+    """Sector-based classification for Phase 3 universe."""
+
+    TECH = "tech"
+    FINANCE = "finance"
+    ENERGY = "energy"
+    HEALTHCARE = "healthcare"
+    BROAD_ETF = "broad_etf"
+    COMMODITY_ETF = "commodity_etf"
+
+
 @dataclass
 class SAXRepresentation:
     """Result of SAX transformation."""

@@ -9,7 +9,7 @@ WaveCast treats financial time series as **multi-scale symbolic objects**. Inste
 3. **Discover patterns** in both domains — shapelets in wavelet space, word patterns in symbolic space
 4. **Predict** using models matched to each representation — ensemble for features, transformer for tokens
 
-This dual-pipeline architecture lets us combine statistical feature engineering (Phase 1) with learned sequence prediction (Phase 2) — each captures structure the other misses.
+Phase 3 experiments proved Pipeline 2 (SAX token prediction) dominates Pipeline 1 (feature-based ensemble) — 82-91% vs 51-57% directional accuracy. Pipeline 2 is the primary production path; Pipeline 1 remains for research and feature analysis.
 
 ## Data Flow
 
@@ -98,13 +98,13 @@ cli (app, commands/* incl. experiment)
 DWT decomposes price into frequency bands with known periodicity. Level 1 ≈ 2-day cycles, level 5 ≈ 32-day trends. Shapelets found in level 3 (weekly) are more meaningful than in raw noise. SAX on DWT coefficients captures regime changes at each scale independently.
 
 ### Why SAX over learned embeddings?
-SAX provides **interpretable** symbols. When the model predicts `bbbb→cccc`, you can read that as "continued low → transition to mid" at that wavelet scale. Breakpoints from the normal distribution give theoretically grounded quantization. The vocabulary is small enough (~100-300 words) for a lightweight transformer.
+SAX provides **interpretable** symbols. When the model predicts `bbbb→cccc`, you can read that as "continued low → transition to mid" at that wavelet scale. Breakpoints from the normal distribution give theoretically grounded quantization. The vocabulary is naturally small (~83 tokens with alphabet=7, word_length=4) — fully saturated and ideal for a lightweight transformer.
 
 ### Why weight tying in WaveletGPT?
-With vocab_size ~150, the embedding and output matrices are the largest parameter blocks. Tying them (a) regularizes the model, (b) keeps params under 200K — important for limited training data per asset, (c) forces the embedding space to be predictive, not just descriptive.
+With vocab_size ~83 (real data) to ~154 (synthetic), the embedding and output matrices are the largest parameter blocks. Tying them (a) regularizes the model, (b) keeps params under 200K — important for limited training data per asset, (c) forces the embedding space to be predictive, not just descriptive.
 
 ### Why multi-asset training?
-Financial assets share structural patterns across classes. A trending equity and a trending commodity produce similar SAX words at comparable wavelet scales. Cross-asset training gives the model more examples of each regime. The `asset_class_embed` lets it learn class-specific adjustments.
+Financial assets share structural patterns across sectors. A trending equity and a trending commodity produce similar SAX words at comparable wavelet scales. Cross-asset training gives the model more examples of each regime — Phase 3 confirmed this helps 4/6 sectors, with finance gaining +3.8%. The `sector_embed` (formerly `asset_class_embed`) lets it learn sector-specific adjustments.
 
 ### Why Bag-of-Words + TF-IDF?
 BoW/TF-IDF over SAX words gives a fixed-size feature vector per asset, enabling:
@@ -124,12 +124,12 @@ Walk-forward splitting must happen at the raw price level, before DWT decomposit
 ## Model Architecture: WaveletGPT
 
 ```
-Input: [token_ids (B, L), level_ids (B,), asset_class_ids (B,)]
+Input: [token_ids (B, L), level_ids (B,), sector_ids (B,)]
   │
   ├─ token_embed(token_ids)       → (B, L, D)
   ├─ pos_embed(0..L-1)            → (B, L, D)    sum
   ├─ level_embed(level_ids)       → (B, 1, D) broadcast ──→ (B, L, D)
-  └─ asset_class_embed(ac_ids)    → (B, 1, D) broadcast ──→ (B, L, D)
+  └─ sector_embed(sector_ids)     → (B, 1, D) broadcast ──→ (B, L, D)
                                                             │
                                           ┌─────────────────▼─────────────────┐
                                           │  TransformerEncoder (3 layers)     │
@@ -146,7 +146,8 @@ Input: [token_ids (B, L), level_ids (B,), asset_class_ids (B,)]
 ```
 
 - D=64, H=4 heads, 3 layers, dropout=0.1
-- ~161K parameters at vocab_size=154
+- ~161K parameters (vocab_size=154 synthetic, ~83 real data)
+- 7 sector embeddings (tech, finance, energy, healthcare, broad ETF, commodity ETF + legacy)
 - Causal masking ensures autoregressive prediction
 - Only last position used for next-token prediction
 
@@ -157,16 +158,17 @@ Input: [token_ids (B, L), level_ids (B,), asset_class_ids (B,)]
 - 763 samples, 154-token vocabulary
 - Training: 3.9s on RTX 2060 SUPER
 
-### Phase 3 (real data — current)
-- 20 US assets (PHASE3_UNIVERSE), 5-year hourly data (~4875 bars/asset)
+### Phase 3 (real data — complete)
+- 20 US assets (DEFAULT_UNIVERSE), 5-year hourly data (~4875 bars/asset), 6 sectors
 - 3 wavelet levels (1, 2, 5) per asset — levels 3&4 excluded as noise
 - 23,700 training samples, 83-token vocabulary (naturally saturated)
 - Training (full 20-asset run): ~3-4 min on RTX 2060 SUPER
 - Full experiment suite (78 runs): ~2.5 hours
+- **2025 held-out**: 60.8% token accuracy, 95.8% directional accuracy (no overfitting)
 
 ### Future (Phase 4+ — larger universe + sub-hourly)
 - 50+ assets, sub-hourly intervals (15m, 5m)
-- Longer sequences → larger context windows
+- Multi-horizon prediction (2, 4, 8 steps ahead)
 - May need: gradient checkpointing, mixed precision (fp16), larger embed_dim
 - RTX 2060 SUPER 8GB should handle up to ~1M params comfortably
 

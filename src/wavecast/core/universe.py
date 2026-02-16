@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from wavecast.core.types import AssetClass
+from wavecast.core.types import AssetClass, Sector
 
 
 @dataclass
@@ -14,6 +14,7 @@ class AssetSpec:
     ticker: str
     name: str
     asset_class: AssetClass
+    sector: Sector | None = None
 
 
 @dataclass
@@ -30,12 +31,15 @@ class Universe:
     def by_class(self, cls: AssetClass) -> list[AssetSpec]:
         return [a for a in self.assets if a.asset_class == cls]
 
+    def by_sector(self, sector: Sector) -> list[AssetSpec]:
+        return [a for a in self.assets if a.sector == sector]
+
     def __len__(self) -> int:
         return len(self.assets)
 
 
-DEFAULT_UNIVERSE = Universe(
-    name="default",
+LEGACY_UNIVERSE = Universe(
+    name="legacy",
     assets=[
         # Equities (8)
         AssetSpec("AAPL", "Apple", AssetClass.EQUITY),
@@ -63,42 +67,47 @@ DEFAULT_UNIVERSE = Universe(
     ],
 )
 
-PHASE3_UNIVERSE = Universe(
-    name="phase3",
+# Phase 3 universe: US equities + commodity ETFs with sector classification
+DEFAULT_UNIVERSE = Universe(
+    name="default",
     assets=[
         # Tech (5)
-        AssetSpec("AAPL", "Apple", AssetClass.EQUITY),
-        AssetSpec("MSFT", "Microsoft", AssetClass.EQUITY),
-        AssetSpec("GOOGL", "Alphabet", AssetClass.EQUITY),
-        AssetSpec("AMZN", "Amazon", AssetClass.EQUITY),
-        AssetSpec("NVDA", "NVIDIA", AssetClass.EQUITY),
+        AssetSpec("AAPL", "Apple", AssetClass.EQUITY, Sector.TECH),
+        AssetSpec("MSFT", "Microsoft", AssetClass.EQUITY, Sector.TECH),
+        AssetSpec("GOOGL", "Alphabet", AssetClass.EQUITY, Sector.TECH),
+        AssetSpec("AMZN", "Amazon", AssetClass.EQUITY, Sector.TECH),
+        AssetSpec("NVDA", "NVIDIA", AssetClass.EQUITY, Sector.TECH),
         # Finance (3)
-        AssetSpec("JPM", "JPMorgan Chase", AssetClass.EQUITY),
-        AssetSpec("GS", "Goldman Sachs", AssetClass.EQUITY),
-        AssetSpec("BAC", "Bank of America", AssetClass.EQUITY),
+        AssetSpec("JPM", "JPMorgan Chase", AssetClass.EQUITY, Sector.FINANCE),
+        AssetSpec("GS", "Goldman Sachs", AssetClass.EQUITY, Sector.FINANCE),
+        AssetSpec("BAC", "Bank of America", AssetClass.EQUITY, Sector.FINANCE),
         # Energy (3)
-        AssetSpec("XOM", "Exxon Mobil", AssetClass.EQUITY),
-        AssetSpec("CVX", "Chevron", AssetClass.EQUITY),
-        AssetSpec("COP", "ConocoPhillips", AssetClass.EQUITY),
+        AssetSpec("XOM", "Exxon Mobil", AssetClass.EQUITY, Sector.ENERGY),
+        AssetSpec("CVX", "Chevron", AssetClass.EQUITY, Sector.ENERGY),
+        AssetSpec("COP", "ConocoPhillips", AssetClass.EQUITY, Sector.ENERGY),
         # Healthcare (3)
-        AssetSpec("JNJ", "Johnson & Johnson", AssetClass.EQUITY),
-        AssetSpec("UNH", "UnitedHealth", AssetClass.EQUITY),
-        AssetSpec("PFE", "Pfizer", AssetClass.EQUITY),
+        AssetSpec("JNJ", "Johnson & Johnson", AssetClass.EQUITY, Sector.HEALTHCARE),
+        AssetSpec("UNH", "UnitedHealth", AssetClass.EQUITY, Sector.HEALTHCARE),
+        AssetSpec("PFE", "Pfizer", AssetClass.EQUITY, Sector.HEALTHCARE),
         # Broad ETFs (2)
-        AssetSpec("SPY", "S&P 500 ETF", AssetClass.EQUITY),
-        AssetSpec("QQQ", "Nasdaq 100 ETF", AssetClass.EQUITY),
+        AssetSpec("SPY", "S&P 500 ETF", AssetClass.EQUITY, Sector.BROAD_ETF),
+        AssetSpec("QQQ", "Nasdaq 100 ETF", AssetClass.EQUITY, Sector.BROAD_ETF),
         # Commodity ETFs (4)
-        AssetSpec("GLD", "Gold ETF", AssetClass.COMMODITY),
-        AssetSpec("SLV", "Silver ETF", AssetClass.COMMODITY),
-        AssetSpec("USO", "Oil ETF", AssetClass.COMMODITY),
-        AssetSpec("UNG", "Natural Gas ETF", AssetClass.COMMODITY),
+        AssetSpec("GLD", "Gold ETF", AssetClass.COMMODITY, Sector.COMMODITY_ETF),
+        AssetSpec("SLV", "Silver ETF", AssetClass.COMMODITY, Sector.COMMODITY_ETF),
+        AssetSpec("USO", "Oil ETF", AssetClass.COMMODITY, Sector.COMMODITY_ETF),
+        AssetSpec("UNG", "Natural Gas ETF", AssetClass.COMMODITY, Sector.COMMODITY_ETF),
     ],
 )
+
+# Backward compatibility alias
+PHASE3_UNIVERSE = DEFAULT_UNIVERSE
 
 
 _UNIVERSES: dict[str, Universe] = {
     "default": DEFAULT_UNIVERSE,
     "phase3": PHASE3_UNIVERSE,
+    "legacy": LEGACY_UNIVERSE,
 }
 
 

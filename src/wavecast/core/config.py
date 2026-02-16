@@ -75,8 +75,8 @@ class BacktestConfig(BaseSettings):
 class SAXConfig(BaseSettings):
     """SAX transformation settings."""
 
-    n_segments: int = 20
-    alphabet_size: int = 8
+    n_segments: int = 256
+    alphabet_size: int = 7
     word_length: int = 4
     word_stride: int = 1
 
@@ -84,23 +84,26 @@ class SAXConfig(BaseSettings):
 class TokenizerConfig(BaseSettings):
     """Tokenizer settings."""
 
-    context_length: int = 32
-    min_word_freq: int = 2
-    max_vocab_size: int = 500
+    context_length: int = 16
+    min_word_freq: int = 1
+    max_vocab_size: int = 100
 
 
 class SequenceModelConfig(BaseSettings):
-    """Sequence model settings."""
+    """Sequence model settings.
 
-    context_length: int = 32
+    Optimal dwt_levels=[1,2,5] (levels 3&4 are noise).
+    """
+
+    context_length: int = 16
     embed_dim: int = 64
     num_heads: int = 4
     num_layers: int = 3
     dropout: float = 0.1
-    epochs: int = 50
+    epochs: int = 80
     batch_size: int = 64
-    lr: float = 0.0003
-    patience: int = 10
+    lr: float = 0.0005
+    patience: int = 15
 
 
 class WaveCastConfig(BaseSettings):

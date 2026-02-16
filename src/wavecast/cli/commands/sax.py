@@ -13,8 +13,8 @@ console = Console()
 @app.command()
 def transform(
     ticker: str = typer.Argument(..., help="Ticker symbol"),
-    segments: int = typer.Option(20, "--segments", "-s", help="Number of PAA segments"),
-    alphabet: int = typer.Option(8, "--alphabet", "-a", help="Alphabet size"),
+    segments: int = typer.Option(256, "--segments", "-s", help="Number of PAA segments"),
+    alphabet: int = typer.Option(7, "--alphabet", "-a", help="Alphabet size"),
     start: str = typer.Option(None, "--start", help="Start date"),
     end: str = typer.Option(None, "--end", help="End date"),
 ) -> None:
@@ -49,8 +49,8 @@ def bow(
     ticker: str = typer.Argument(..., help="Ticker symbol"),
     word_length: int = typer.Option(4, "--word-length", "-w", help="SAX word length"),
     stride: int = typer.Option(1, "--stride", help="Word extraction stride"),
-    segments: int = typer.Option(20, "--segments", "-s", help="Number of PAA segments"),
-    alphabet: int = typer.Option(8, "--alphabet", "-a", help="Alphabet size"),
+    segments: int = typer.Option(256, "--segments", "-s", help="Number of PAA segments"),
+    alphabet: int = typer.Option(7, "--alphabet", "-a", help="Alphabet size"),
     start: str = typer.Option(None, "--start", help="Start date"),
     end: str = typer.Option(None, "--end", help="End date"),
     top_n: int = typer.Option(20, "--top", "-n", help="Show top N words"),

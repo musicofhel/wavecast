@@ -36,7 +36,17 @@ from wavecast.wavelets.dwt import decompose
 
 logger = logging.getLogger(__name__)
 
-# AssetClass.value returns strings, not ints — use this mapping
+# Sector.value returns strings — use this mapping for embedding IDs
+SECTOR_ID_MAP: dict[str, int] = {
+    "tech": 0,
+    "finance": 1,
+    "energy": 2,
+    "healthcare": 3,
+    "broad_etf": 4,
+    "commodity_etf": 5,
+}
+
+# Legacy asset class mapping (for backward compat with old universes)
 ASSET_CLASS_ID_MAP: dict[str, int] = {
     "equity": 0,
     "crypto": 1,
@@ -385,14 +395,20 @@ class ExperimentRunner:
     ) -> dict[str, int]:
         """Build ticker -> asset_class_id mapping.
 
-        Uses the DEFAULT_UNIVERSE for known tickers, falls back to 0 (equity).
+        Prefers sector-based IDs from DEFAULT_UNIVERSE, falls back to
+        legacy asset class IDs, then to 0 (equity/tech).
         """
-        from wavecast.core.universe import DEFAULT_UNIVERSE
+        from wavecast.core.universe import DEFAULT_UNIVERSE, LEGACY_UNIVERSE
 
         ticker_to_class: dict[str, int] = {}
-        for asset in DEFAULT_UNIVERSE.assets:
+        # First pass: legacy universe (lower priority)
+        for asset in LEGACY_UNIVERSE.assets:
             class_id = ASSET_CLASS_ID_MAP.get(asset.asset_class.value, 0)
             ticker_to_class[asset.ticker] = class_id
+        # Second pass: default universe sector IDs (higher priority)
+        for asset in DEFAULT_UNIVERSE.assets:
+            if asset.sector is not None:
+                ticker_to_class[asset.ticker] = SECTOR_ID_MAP.get(asset.sector.value, 0)
 
         return {t: ticker_to_class.get(t, 0) for t in tickers}
 

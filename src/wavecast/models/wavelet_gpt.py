@@ -28,7 +28,7 @@ class WaveletGPTNet(nn.Module):
         num_layers: int = 3,
         dropout: float = 0.1,
         n_levels: int = 6,
-        n_asset_classes: int = 5,
+        n_asset_classes: int = 7,
     ) -> None:
         super().__init__()
         self.context_length = context_length
@@ -107,7 +107,7 @@ class WaveletGPT(BaseModel):
         num_layers: int = 3,
         dropout: float = 0.1,
         n_levels: int = 6,
-        n_asset_classes: int = 5,
+        n_asset_classes: int = 7,
         epochs: int = 50,
         batch_size: int = 64,
         learning_rate: float = 0.0003,

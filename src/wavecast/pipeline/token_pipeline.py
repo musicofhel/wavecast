@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from wavecast.core.config import WaveCastConfig
-from wavecast.core.types import AssetClass, MultiLevelTokenSequence
+from wavecast.core.types import MultiLevelTokenSequence, Sector
 from wavecast.core.universe import DEFAULT_UNIVERSE, Universe
 from wavecast.evaluation.token_eval import TokenPredictionMetrics, evaluate_token_predictions
 from wavecast.tokenizer.vocabulary import SAXVocabulary
@@ -63,11 +63,14 @@ class TokenPipelineRunner:
         cfg = config or WaveCastConfig()
         cfg.ensure_dirs()
 
-        # Build asset class mapping
+        # Build sector/asset class mapping
         asset_class_ids: dict[str, int] = {}
-        class_to_id = {cls: i for i, cls in enumerate(AssetClass)}
+        sector_to_id = {s: i for i, s in enumerate(Sector)}
         for asset in universe.assets:
-            asset_class_ids[asset.ticker] = class_to_id.get(asset.asset_class, 0)
+            if asset.sector is not None:
+                asset_class_ids[asset.ticker] = sector_to_id.get(asset.sector, 0)
+            else:
+                asset_class_ids[asset.ticker] = 0
 
         # Step 1-2: Fetch and decompose all assets
         logger.info(f"Processing {len(universe)} assets...")

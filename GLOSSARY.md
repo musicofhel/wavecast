@@ -60,7 +60,7 @@ Quick reference for the domain-specific terms used throughout the codebase.
 | **SAXVocabulary** | Maps SAX words ↔ integer token IDs. Includes PAD (0) and UNK (1) special tokens. | `tokenizer/vocabulary.py` |
 | **PAD** | Padding token (ID=0). Used to left-pad short sequences to `context_length`. | `tokenizer/vocabulary.py:PAD_ID` |
 | **UNK** | Unknown token (ID=1). Used for SAX words not in the vocabulary. | `tokenizer/vocabulary.py:UNK_ID` |
-| **Context length** | Number of preceding tokens used to predict the next one. Default: 16 or 32. | `SequenceModelConfig.context_length` |
+| **Context length** | Number of preceding tokens used to predict the next one. Default: 16 (Phase 3 optimal). | `SequenceModelConfig.context_length` |
 | **MultiLevelTokenSequence** | Token sequences for all DWT levels of one asset. Keyed by level number. | `core/types.py` |
 
 ## Model Domain
@@ -99,4 +99,7 @@ Quick reference for the domain-specific terms used throughout the codebase.
 | **Level-0 directional accuracy** | Directional accuracy computed on approximation level only. Detail levels represent oscillation, not direction. | `experiments/metrics.py` |
 | **UNK rate** | Fraction of test tokens that map to UNK (unseen in training vocabulary). High UNK = vocab too restrictive. | `experiments/result.py` |
 | **Ablation** | Removing one component (e.g., a DWT level) and measuring accuracy change. Used in C2 to identify noise levels. | `scripts/run_C2.py` |
-| **PHASE3_UNIVERSE** | 20 US assets across 5 sectors: tech, finance, energy, healthcare, broad/commodity ETFs. | `core/universe.py` |
+| **DEFAULT_UNIVERSE** | 20 US assets across 6 sectors. Replaces the original 19-asset universe (now `LEGACY_UNIVERSE`). `PHASE3_UNIVERSE` is an alias. | `core/universe.py` |
+| **LEGACY_UNIVERSE** | Original 19-asset universe from Phase 1-2 (equities, crypto, forex, commodity ETFs). Accessible via `get_universe("legacy")`. | `core/universe.py` |
+| **Sector** | Sector-based classification: TECH, FINANCE, ENERGY, HEALTHCARE, BROAD_ETF, COMMODITY_ETF. Used for sector embeddings in WaveletGPT. | `core/types.py:Sector` |
+| **PHASE3_UNIVERSE** | Alias for DEFAULT_UNIVERSE. 20 US assets across 6 sectors: tech (5), finance (3), energy (3), healthcare (3), broad ETFs (2), commodity ETFs (4). | `core/universe.py` |

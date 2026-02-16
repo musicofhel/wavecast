@@ -7,7 +7,7 @@ Wavelet-shapelet financial forecasting library with SAX tokenization and transfo
 ```bash
 cd ~/wavecast
 source .venv/bin/activate
-pytest tests/ -q          # 219 tests, ~7s on GPU
+pytest tests/ -q          # 230 tests, ~8s on GPU
 ruff check src/ tests/    # 0 errors
 ```
 
@@ -23,7 +23,7 @@ ruff check src/ tests/    # 0 errors
 
 ```
 src/wavecast/
-  core/         — types, config, exceptions, universe (incl. PHASE3_UNIVERSE)
+  core/         — types, config, exceptions, universe (DEFAULT=Phase3, LEGACY=Phase1-2)
   data/         — Massive.com fetcher, cache, preprocessing, storage, decomposition cache
   wavelets/     — DWT decompose, CWT scalogram, reconstruction
   shapelets/    — W-TSS discovery, quality metrics, library, clustering
@@ -39,13 +39,13 @@ src/wavecast/
   cli/          — Typer CLI: data, discover, match, analyze, forecast, library, backtest, sax, tokenize, experiment
   viz/          — scalogram, shapelet gallery, DTW alignment, forecast, fractal plots
 tests/
-  unit/         — 41 test files, 213 unit tests
+  unit/         — 41 test files, 229 unit tests
   integration/  — 1 pipeline integration test
   fixtures/     — deterministic generators (seed=42)
-scripts/        — experiment runners (run_C1.py through run_C7.py), fetch_phase3_universe.py
+scripts/        — experiment runners (run_C1.py-run_C7.py, run_D1_D4.py), fetch_phase3_universe.py
 ```
 
-90 source files, 48 test files, 219 tests passing.
+90 source files, 48 test files, 230 tests passing.
 
 ## Architecture: Two Pipelines
 
@@ -100,7 +100,7 @@ from wavecast.tokenizer.tokenizer import WaveletSAXTokenizer
 from wavecast.tokenizer.dataset import build_sequence_dataset
 from wavecast.models.wavelet_gpt import WaveletGPT
 from wavecast.evaluation.token_eval import evaluate_token_predictions
-from wavecast.core.universe import get_universe, DEFAULT_UNIVERSE, PHASE3_UNIVERSE
+from wavecast.core.universe import get_universe, DEFAULT_UNIVERSE, LEGACY_UNIVERSE, PHASE3_UNIVERSE
 from wavecast.pipeline.token_pipeline import TokenPipelineRunner
 
 # Phase 3 Experiments
@@ -129,10 +129,16 @@ wavecast library build --universe default
 wavecast backtest run AAPL
 
 # Phase 2
-wavecast sax transform AAPL --segments 64 --alphabet 7
+wavecast sax transform AAPL --segments 256 --alphabet 7
 wavecast sax bow AAPL --word-length 4
 wavecast tokenize vocab --universe default
-wavecast tokenize run --universe default --epochs 50
+wavecast tokenize run --universe default --epochs 80
+
+# Phase 3 Experiments
+wavecast experiment run --tickers AAPL,MSFT --train-end 2023-12-31 --test-start 2024-01-01
+wavecast experiment sweep --param alphabet_size --values 3,5,7,9,11
+wavecast experiment show C1_granularity
+wavecast experiment compare C1_granularity C2_level_contribution
 ```
 
 ## Config System
@@ -144,9 +150,9 @@ Pydantic `BaseSettings` hierarchy in `core/config.py`:
 - `FractalConfig` — Hurst method/window, MFDFA q-range, regime thresholds
 - `ModelConfig` — LSTM/XGBoost hyperparams, ensemble weights
 - `BacktestConfig` — capital, position size, commission, walk-forward splits
-- `SAXConfig` — n_segments, alphabet_size, word_length, word_stride
-- `TokenizerConfig` — context_length, min_word_freq, max_vocab_size
-- `SequenceModelConfig` — embed_dim, num_heads, num_layers, dropout, epochs, lr, patience
+- `SAXConfig` — n_segments=256, alphabet_size=7, word_length=4, word_stride=1
+- `TokenizerConfig` — context_length=16, min_word_freq=1, max_vocab_size=100
+- `SequenceModelConfig` — embed_dim=64, num_heads=4, num_layers=3, dropout=0.1, epochs=80, lr=0.0005, patience=15 (optimal dwt_levels=[1,2,5])
 - `WaveCastConfig` — top-level aggregator with data/library/model/cache dirs
 - `ExperimentConfig` — full experiment specification (tickers, interval, SAX/model params, split dates)
 - `ExperimentResult` — metrics + CIs + baselines + per-asset/sector/level breakdowns
@@ -159,7 +165,7 @@ Core dataclasses in `core/types.py`:
 - `HurstResult`, `MFDFAResult`, `SelfSimilarityResult`, `RegimeDetection`
 - `FeatureVector` (wavelet + shapelet + fractal + market + sax features)
 - `SAXRepresentation`, `SAXWord`, `TokenSequence`, `MultiLevelTokenSequence`
-- Enums: `MarketLabel`, `RegimeType`, `AssetClass`
+- Enums: `MarketLabel`, `RegimeType`, `AssetClass`, `Sector`
 
 ## Exception Hierarchy
 
@@ -186,20 +192,21 @@ WaveCastError
 - Hurst exponent can exceed 1.0 on integrated processes — mathematically correct, not a bug
 - `shape_descriptor()` returns len-1 array (np.diff, no padding)
 - `subsequence_search()` raises DTWError when query > series length
-- `AssetClass.value` returns strings ('equity', etc.) not ints — use a mapping dict for numeric IDs
+- `AssetClass.value` returns strings ('equity', etc.) not ints — use a mapping dict for numeric IDs. `Sector.value` same ('tech', 'finance', etc.)
 - `SAXVocabulary` supports `len()` and `.size` property — both return total including PAD+UNK
 - `build_sequence_dataset()` expects `MultiLevelTokenSequence` objects, not raw dicts
 - WaveletGPT X format: `[context_token_0, ..., context_token_{L-1}, level_id, asset_class_id]`
 - Weight tying means WaveletGPTNet vocab_size affects both embedding and output head simultaneously
 - Cached OHLCV parquets use `{ticker}_1h_ohlcv.parquet` format (6 cols) — ExperimentRunner handles loading
 - Rolling Hurst on raw prices always returns H > 1.0 (integrated processes) — use `use_returns=True` for regime detection on log returns
-- `PHASE3_UNIVERSE` has 20 US assets (5 sectors); `DEFAULT_UNIVERSE` still has the original 19 (incl. crypto/forex)
+- `DEFAULT_UNIVERSE` (= `PHASE3_UNIVERSE`) has 20 US assets with sector tags; `LEGACY_UNIVERSE` has the original 19 (incl. crypto/forex). `get_universe("legacy")` for old universe.
+- `AssetSpec` has optional `sector: Sector | None` field — set for DEFAULT_UNIVERSE, None for LEGACY_UNIVERSE
 - Directional accuracy is level-0 only for multi-level SAX — detail levels represent oscillation magnitude, not price direction
 
 ## Testing
 
 ```bash
-pytest tests/ -q                                          # full suite (~7s GPU)
+pytest tests/ -q                                          # full suite (~8s GPU)
 pytest tests/unit/ -q                                     # unit only (~5s)
 pytest tests/unit/test_wavelet_gpt.py -v                  # GPU model tests
 pytest tests/unit/test_experiment_runner.py -v             # experiment framework tests
@@ -209,7 +216,7 @@ ruff check src/ tests/                                    # lint
 
 ## Benchmarks (RTX 2060 SUPER)
 
-- Full test suite: 219 tests in 7s (was 2m20s CPU-only before GPU)
+- Full test suite: 230 tests in 8s (was 2m20s CPU-only before GPU)
 - WaveletGPT 6 tests: 4s (was 2m16s CPU-only)
 - WaveletGPT training (161K params, 610 samples, 80 epochs): 3.9s
 - SAX+BoW+TF-IDF on 7 assets x 2000 points: <1s
@@ -230,6 +237,14 @@ ruff check src/ tests/                                    # lint
 | Q6: Regime | **Consistent** — 82.7% overall, +10.3% over persistence, mean-reverting slightly best |
 | Q7: Ensemble | **No benefit** — P2 dominates P1, combining hurts performance |
 
+### 2025 Held-Out Evaluation (Final Model)
+- Trained on 2021-2024, tested on 2025 (truly unseen during all experiments)
+- Token accuracy: 60.8% [59.96%, 61.68%], directional accuracy: 95.8% [95.26%, 96.30%]
+- Level 5 (coarsest): 87.4% token accuracy; levels 1-2: ~55%
+- Top sectors: broad ETFs (62.5%), commodity ETFs (62.3%), tech (61.6%)
+- Persistence baseline: 36.0%, momentum baseline: 38.0% — model lift: +56-60 pp
+- No overfitting detected: 2025 results consistent with 2024 validation
+
 ## Data Source
 
 - **Massive.com** (formerly Polygon.io) — `MASSIVE_API_KEY` env var
@@ -237,7 +252,7 @@ ruff check src/ tests/                                    # lint
 - Package: `massive>=2.0` on PyPI
 - Auto-pagination via `client.list_aggs()`, timestamps in Unix ms
 - Results cached to `~/.wavecast/cache/` as Parquet (40 files, 11.9 MB for Phase 3)
-- **PHASE3_UNIVERSE**: 20 US assets across 5 sectors (tech, finance, energy, healthcare, broad ETFs, commodity ETFs)
-- **DEFAULT_UNIVERSE**: 19 assets across equity/crypto/forex/commodity (Phase 1-2 legacy)
+- **DEFAULT_UNIVERSE** (= PHASE3_UNIVERSE): 20 US assets across 6 sectors (tech, finance, energy, healthcare, broad ETFs, commodity ETFs)
+- **LEGACY_UNIVERSE**: 19 assets across equity/crypto/forex/commodity (Phase 1-2)
 - Hourly bars: ~4,875 per asset for training period (2021-2023)
 - All commodity ETFs (GLD, SLV, USO, UNG) verified working on US Stocks plan

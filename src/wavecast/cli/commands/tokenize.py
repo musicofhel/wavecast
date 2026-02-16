@@ -13,11 +13,11 @@ console = Console()
 @app.command()
 def vocab(
     corpus_size: int = typer.Option(5, "--corpus-size", "-c", help="Number of tickers for corpus"),
-    segments: int = typer.Option(20, "--segments", "-s", help="SAX segments"),
-    alphabet: int = typer.Option(8, "--alphabet", "-a", help="SAX alphabet size"),
+    segments: int = typer.Option(256, "--segments", "-s", help="SAX segments"),
+    alphabet: int = typer.Option(7, "--alphabet", "-a", help="SAX alphabet size"),
     word_length: int = typer.Option(4, "--word-length", "-w", help="SAX word length"),
-    min_freq: int = typer.Option(2, "--min-freq", help="Minimum word frequency"),
-    max_size: int = typer.Option(500, "--max-size", help="Maximum vocabulary size"),
+    min_freq: int = typer.Option(1, "--min-freq", help="Minimum word frequency"),
+    max_size: int = typer.Option(100, "--max-size", help="Maximum vocabulary size"),
 ) -> None:
     """Build and inspect a SAX vocabulary from market data."""
     from wavecast.core.config import WaveCastConfig

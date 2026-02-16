@@ -30,8 +30,8 @@
 - [x] 167 tests passing (79 new)
 - [x] Synthetic validation: 48.4% token acc, 87.7% directional acc
 
-### Phase 3: Real Data Validation & Research Experiments (v0.3.0 — in progress)
-Connected to Massive.com API, ran 78 experiments across 7 research questions on 20 US assets with hourly bars.
+### Phase 3: Real Data Validation & Research Experiments (v0.3.0)
+Connected to Massive.com API, ran 78 experiments across 7 research questions on 20 US assets with hourly bars. Final model trained on 2021-2024, evaluated on held-out 2025 data.
 
 - [x] Fetch 5-year hourly+daily data for PHASE3_UNIVERSE (20 US assets, 5 sectors)
 - [x] Experiment framework: ExperimentConfig, ExperimentResult, ExperimentRunner, walk-forward splitter
@@ -44,43 +44,44 @@ Connected to Massive.com API, ran 78 experiments across 7 research questions on 
 - [x] C5: Context length sweep → context=16 optimal, 64 hurts
 - [x] C6: Regime dependence → consistent 82.7% across regimes, +10.3% over persistence
 - [x] C7: Ensemble comparison → P2 dominates P1, no ensemble benefit
-- [x] 219 tests passing (52 new experiment framework tests)
-- [ ] D1-D4: Final model training + held-out 2025 evaluation + results report
-- [ ] E1-E3: Integration (update universe, configs, docs)
+- [x] D1: Aggregate results → optimal config per sector
+- [x] D2: Train final WaveletGPT on 2021-2024 with optimal config
+- [x] D3: Held-out evaluation on 2025 data → 60.8% token acc, 95.8% dir acc
+- [x] D4: Generate PHASE3_RESULTS.md (full report)
+- [x] E1: Update universe — PHASE3_UNIVERSE is now DEFAULT, Sector enum added
+- [x] E2: Update default configs with optimal values
+- [x] E3: Update docs with final findings
+- [x] 230 tests passing (63 new experiment + universe tests)
 
 ### Phase 3 Results vs Success Criteria
 - Token accuracy ~56-63% on real data (target was >30%) — **exceeded**
-- Directional accuracy ~83% (target was >55%) — **exceeded**
+- Directional accuracy ~83-96% (target was >55%) — **exceeded**
 - All 5 sectors show above-random prediction — **exceeded** (target was 2+ sectors)
 - Multi-level [1,2,5] outperforms single-level — **confirmed** (levels 3&4 removal improved accuracy)
+- 2025 held-out: 60.8% token acc, 95.8% dir acc — **no overfitting** (consistent with 2024)
 
 ## Current Focus
 
-### Phase 3 Remaining (Wave 3)
-- [ ] D1: Aggregate results → optimal config per sector
-- [ ] D2: Train final WaveletGPT on 2021-2024 with optimal config
-- [ ] D3: Held-out evaluation on 2025 data (true out-of-sample)
-- [ ] D4: Generate PHASE3_RESULTS.md (full report)
-- [ ] E1: Update universe to PHASE3_UNIVERSE as default
-- [ ] E2: Update default configs with optimal values
-- [ ] E3: Update docs with final findings
+Phase 3 is complete. Next priorities are Phase 4 (hyperparameter optimization) and Phase 5 (signal generation).
 
 ## Future Phases
 
-### Phase 4: Hyperparameter Optimization
+### Phase 4: Hyperparameter Optimization & Multi-Horizon
+- [ ] Multi-horizon prediction: extend WaveletGPT to predict 2, 4, 8 steps ahead (not just next token)
+- [ ] Price reconstruction: map SAX token predictions back to approximate price movements via inverse PAA/DWT
+- [ ] Expanding window validation: replace single train/test split with rolling/expanding windows
 - [ ] Optuna for remaining fixed params: n_segments, word_length, word_stride
 - [ ] Optuna for WaveletGPT architecture (embed_dim, num_heads, num_layers)
-- [ ] Cross-validation strategy for financial time series (purged walk-forward)
-- [ ] Per-sector optimal configurations (Phase 3 showed broad ETFs differ from others)
-- [ ] Regime-conditional models (if Phase 3 C6 shows >10% variation — it didn't, so lower priority)
-- [ ] Multi-year rolling holdout for more robust evaluation
+- [ ] Per-sector fine-tuning (commodity ETFs showed marginal benefit from sector-only training)
+- [ ] Regime-conditional models (low priority — Phase 3 C6 showed <2% variation across regimes)
 
-### Phase 5: Signal Generation
+### Phase 5: Signal Generation & Backtesting
 - [ ] Token predictions → directional signals (buy/sell/hold)
 - [ ] Confidence calibration (softmax probabilities → position sizing)
-- [ ] P2-only signal pipeline (Phase 3 proved no ensemble benefit)
-- [ ] Signal backtesting with transaction costs
+- [ ] P2-only signal pipeline (Phase 3 proved no ensemble benefit — P1 can be deprecated)
+- [ ] Walk-forward backtesting with transaction costs, bid-ask spreads, slippage
 - [ ] Risk metrics: max drawdown, Calmar ratio, tail risk
+- [ ] Additional asset classes: international equities, fixed income, higher-frequency data
 
 ### Phase 6: Performance Optimization
 - [ ] Rust acceleration via PyO3:
@@ -122,7 +123,7 @@ Connected to Massive.com API, ran 78 experiments across 7 research questions on 
 2. **word_length sensitivity**: Fixed at 4 — would 3 or 5 change the vocabulary characteristics?
 3. **Architecture search**: embed_dim=64, 4 heads, 3 layers held constant — room for improvement?
 4. **Per-sector fine-tuning**: Broad ETFs consistently outperform — would sector-specific heads help?
-5. **Temporal stability**: Does the 2024 test accuracy hold on 2025? (D3 will answer this)
+5. **Temporal stability**: ~~Does the 2024 test accuracy hold on 2025?~~ **Answered by D3**: Yes — 60.8% token acc (vs 63.0% on 2024), 95.8% dir acc (vs 99.7%). Modest degradation, no overfitting.
 
 ## Non-Goals (Explicit)
 
