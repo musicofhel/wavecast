@@ -80,10 +80,14 @@ class SAXVocabulary:
         """Encode a list of words to token IDs."""
         return [self.encode(w) for w in words]
 
+    def __len__(self) -> int:
+        """Total vocabulary size including PAD and UNK."""
+        return len(self._word_to_id)
+
     @property
     def size(self) -> int:
         """Total vocabulary size including PAD and UNK."""
-        return len(self._word_to_id)
+        return len(self)
 
     @property
     def words(self) -> list[str]:
