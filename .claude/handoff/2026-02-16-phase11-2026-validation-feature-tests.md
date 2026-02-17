@@ -5,7 +5,7 @@
 
 ## Summary
 
-Validated the frozen D1 production model on truly out-of-sample 2026 data (Jan 1 - Feb 14). Trained and compared a level-1-only variant. Built a reusable feature test harness and tested two OHLC-derived feature sets. Both feature tests failed — the D1 representation (coefficient deltas + 4 aux features) already captures the relevant signal.
+Validated the frozen D1 production model on truly out-of-sample 2026 data (Jan 1 - Feb 14). Trained and compared a level-1-only variant. Built a reusable feature test harness and tested three feature sets (bar structure, range dynamics, wavelet jump filters). All three failed — the D1 representation (coefficient deltas + 4 aux features) is the signal ceiling.
 
 ## Results
 
@@ -79,12 +79,27 @@ Feature function contract: `(ohlcv_df, detail_coeffs, approx_coeffs, level) -> N
 
 **VERDICT: FAIL** — all three metrics degraded
 
+### Feature Test 3: Jump Filters (`scripts/feature_tests/test_jump_filters.py`)
+
+2 features from Aubrun et al. 2024 (arXiv:2404.16467): causal ψMR (mean-reversion strength) and ψTR (trend consistency). 8-bar cosine-envelope kernels applied to log returns, backward-looking only (no future leakage).
+
+| Metric | Baseline | Challenger | Delta | Status |
+|--------|----------|------------|-------|--------|
+| Econ Dir | 63.9% | 64.2% | +0.3pp | Below threshold |
+| Sharpe | +4.673 | +4.660 | -0.013 | No improvement |
+| Transition | 55.2% | 50.5% | -4.7pp | **DEGRADED** |
+
+All 3 seeds had better econ dir (+0.2 to +0.4pp) but below the +1pp threshold. Seed 1 Sharpe (+0.248) was noise — seeds 2-3 pulled the mean back to flat. Transition degradation matches the pattern from tests 1 and 2.
+
+**VERDICT: FAIL** — transition accuracy degraded
+
 ## Key Conclusions
 
 1. **D1 representation is robust on OOS data** — zero degradation from 2025 to 2026
 2. **Level 1 dominates** — 63.8% vs 51.4% for level 2. Level-1-only model adds no improvement.
-3. **OHLC microstructure doesn't help** — close-only coefficient deltas already capture the signal. Adding bar structure or range dynamics adds noise.
+3. **3/3 feature tests FAIL on transition accuracy** — bar structure (-4.1pp), range dynamics (-5.3pp), jump filters (-4.7pp). Adding features from the same price series consistently degrades the model's ability to predict reversals. The D1 representation (coefficient deltas + 4 aux) is the signal ceiling.
 4. **Feature test harness is reusable** — can test any new feature set with `run_feature_test(name, fn, n_features)`
+5. **60% econ dir / +2.18 Sharpe after costs is the system's edge.** Accept it and shift to operational work.
 
 ## New Files Created
 
@@ -97,12 +112,12 @@ Feature function contract: `(ohlcv_df, detail_coeffs, approx_coeffs, level) -> N
 | `scripts/feature_tests/harness.py` | ~310 | Reusable feature test framework |
 | `scripts/feature_tests/test_bar_structure.py` | ~68 | Bar structure feature test |
 | `scripts/feature_tests/test_range_dynamics.py` | ~73 | Range dynamics feature test |
+| `scripts/feature_tests/test_jump_filters.py` | ~105 | Wavelet jump filter feature test |
 
 ## What's Next
 
-The D1 model is validated and stable. Possible next directions:
-- **More feature tests**: Volume profile, time-of-day seasonality, cross-asset correlation features
-- **Level divergence**: Separate models per level (currently SAME as all-levels for L1)
-- **Real-time forward testing**: Let `d1_forward_v1` accumulate predictions and resolve against actuals
-- **Latency optimization**: The model predicts in <100ms — investigate real-time signal generation
-- **Production deployment**: The model works. Next step is infrastructure (scheduling, monitoring, alerting).
+The D1 model is validated, stable, and at its signal ceiling. Remaining directions:
+- **Operational**: Position sizing, risk management, scheduled execution, monitoring
+- **Confidence calibration**: Meta-model that identifies which predictions to trust (doesn't require new features)
+- **Cross-asset context**: Co-jump contagion from Aubrun et al. — architecture change, not feature addition
+- **Forward testing**: Let `d1_forward_v1` accumulate predictions and resolve against actuals
