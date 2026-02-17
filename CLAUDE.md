@@ -48,7 +48,7 @@ tests/
   unit/         — 62 test files, 417 unit tests
   integration/  — 4 integration tests (pipeline, signal pipeline, performance, forward pipeline)
   fixtures/     — deterministic generators (seed=42)
-scripts/        — experiment runners (run_C1-C7, run_D1_D4, run_F1/F4/F5/F6), fetch_phase3_universe.py
+scripts/        — experiment runners (run_C1-C7, run_D1_D4, run_F1/F4/F5/F6), fetch_phase3_universe.py, train_forward_model.py, model_audit.py
 ```
 
 ~115 source files, 69 test files, 424 tests passing.
@@ -212,7 +212,7 @@ wavecast signal backtest MODEL_PATH TICKERS --train-end 2023-12-31 --test-start 
 wavecast signal calibrate MODEL_PATH TICKERS --validation-start 2024-01-01 --validation-end 2024-06-30
 
 # Phase 7 Forward Testing
-wavecast forward run --model-path ~/.wavecast/models/wavelet_gpt --vocab-path ~/.wavecast/models/vocabulary.json --tickers AAPL,MSFT,GOOG --interval 1h --test-name paper_v1
+wavecast forward run --model-path ~/.wavecast/models/forward_ready --vocab-path ~/.wavecast/models/forward_ready/vocabulary.json --tickers AAPL,MSFT,GOOGL,SPY --interval 1h --test-name paper_v1
 wavecast forward status --test-name paper_v1
 wavecast forward report --test-name paper_v1 --format json --output report.json
 wavecast forward list
@@ -274,6 +274,23 @@ WaveCastError
 ├── TokenizerError
 └── ConfigError
 ```
+
+## Model Audit Results (Phase 7, 2026-02-16) — CRITICAL
+
+**The model has NO tradeable edge.** Run `scripts/model_audit.py` for full 13-analysis audit.
+
+- **Economic directional accuracy: ~46%** (below 50% random). The reported 95.8% directional accuracy is SYMBOLIC — `level0_directional_accuracy` in `experiments/metrics.py` compares SAX word ordinals, not actual price direction.
+- **Token accuracy (62.4%) is real but economically meaningless.** The model accurately predicts SAX tokens, but SAX tokens encode wavelet coefficient levels, not price direction.
+- **Persistence is the dominant pattern**: 45.2% of predictions are "same as last token" with 79.2% accuracy. Change predictions are 48.5% (random).
+- **Level 5's 87.4% token accuracy is persistence**: tokens change only 17.4% of the time. Mean run length = 7 tokens.
+- **Fixed-sizing Sharpe: -0.5573**. Kelly's +0.18 is an artifact (near-zero position sizes).
+- **Confidence is useless for trading**: token accuracy scales perfectly with softmax confidence (36%→93%), but economic directional accuracy is FLAT (~46%) across all deciles.
+- **Model doesn't beat random**: real Sharpe at 84th percentile of random baseline (doesn't exceed P95).
+
+**Implication**: Do NOT optimize the current pipeline further. The SAX representation is the bottleneck. Phase 8 must redesign the target variable (e.g., predict signed returns, return quantiles, or coefficient deltas instead of SAX levels).
+
+Full results: `~/.wavecast/audit/model_audit_results.json`
+Handoff: `.claude/handoff/2026-02-16-model-audit-results.md`
 
 ## Known Quirks
 
@@ -367,6 +384,7 @@ maturin develop --release                                 # rebuild Rust extensi
 - Top sectors: broad ETFs (62.5%), commodity ETFs (62.3%), tech (61.6%)
 - Persistence baseline: 36.0%, momentum baseline: 38.0% — model lift: +56-60 pp
 - No overfitting detected: 2025 results consistent with 2024 validation
+- **CAVEAT (Phase 7 audit)**: These metrics are real for TOKEN prediction but have ZERO economic value. See "Model Audit Results" section above.
 
 ### Phase 4 Results (HPO + Multi-Horizon)
 - **Optuna SAX**: n_segments=512 (was 256) — higher resolution helps

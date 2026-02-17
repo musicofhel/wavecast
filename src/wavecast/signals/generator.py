@@ -165,3 +165,115 @@ class SignalGenerator:
         shifted = scaled - scaled.max(axis=1, keepdims=True)
         exp_scaled = np.exp(shifted)
         return exp_scaled / exp_scaled.sum(axis=1, keepdims=True)
+
+
+class ReturnSignalGenerator:
+    """Converts return-target predictions to trading signals.
+
+    For quantile tasks: classes above midpoint → UP, below → DOWN, midpoint → FLAT.
+    For regression tasks: sign(predicted_return) → direction.
+
+    Args:
+        task: "return_quantile" or "return_regression".
+        n_classes: Number of quantile classes (default 5).
+        confidence_threshold: Minimum confidence to emit a signal.
+    """
+
+    def __init__(
+        self,
+        task: str = "return_quantile",
+        n_classes: int = 5,
+        confidence_threshold: float = 0.0,
+    ) -> None:
+        self.task = task
+        self.n_classes = n_classes
+        self.confidence_threshold = confidence_threshold
+        self._mid_class = n_classes // 2  # 2 for 5-class
+
+    def generate(
+        self,
+        predicted_classes: NDArray[np.int64],
+        timestamps: NDArray[np.datetime64],
+        ticker: str = "",
+        horizon: int = 1,
+        probabilities: NDArray[np.float64] | None = None,
+    ) -> SignalSeries:
+        """Generate trading signals from return predictions.
+
+        Args:
+            predicted_classes: Predicted class IDs (quantile) or raw returns (regression).
+            timestamps: Timestamps (n_samples,).
+            ticker: Asset ticker.
+            horizon: Prediction horizon.
+            probabilities: Optional softmax probabilities (quantile only).
+
+        Returns:
+            SignalSeries with one TradingSignal per sample.
+        """
+        n = len(predicted_classes)
+        signals = []
+
+        for i in range(n):
+            if self.task == "return_quantile":
+                direction, confidence = self._quantile_to_signal(
+                    int(predicted_classes[i]),
+                    probabilities[i] if probabilities is not None else None,
+                )
+            else:
+                # Regression: sign of predicted return
+                pred_val = float(predicted_classes[i])
+                if pred_val > 0:
+                    direction = 1
+                elif pred_val < 0:
+                    direction = -1
+                else:
+                    direction = 0
+                confidence = min(abs(pred_val) * 100.0, 1.0)  # scale for confidence
+
+            if confidence < self.confidence_threshold:
+                direction = 0
+
+            raw_prob = 0.0
+            if probabilities is not None and probabilities.ndim == 2:
+                raw_prob = float(probabilities[i, int(predicted_classes[i])])
+
+            signals.append(
+                TradingSignal(
+                    timestamp=timestamps[i],
+                    direction=direction,
+                    confidence=confidence,
+                    raw_probability=raw_prob,
+                    token_id=int(predicted_classes[i]),
+                    horizon=horizon,
+                    ticker=ticker,
+                )
+            )
+
+        return SignalSeries(signals=signals, ticker=ticker, horizon=horizon)
+
+    def _quantile_to_signal(
+        self,
+        predicted_class: int,
+        proba: NDArray[np.float64] | None = None,
+    ) -> tuple[int, float]:
+        """Convert a quantile class prediction to direction and confidence.
+
+        Classes above midpoint → UP (+1), below → DOWN (-1), midpoint → FLAT (0).
+        Confidence = max softmax probability, or 1.0 if no proba.
+        """
+        if predicted_class > self._mid_class:
+            direction = 1
+        elif predicted_class < self._mid_class:
+            direction = -1
+        else:
+            direction = 0
+
+        if proba is not None:
+            confidence = float(np.max(proba))
+        else:
+            # Higher confidence for extreme classes
+            distance = abs(predicted_class - self._mid_class)
+            max_distance = max(self._mid_class, self.n_classes - 1 - self._mid_class)
+            confidence = distance / max_distance if max_distance > 0 else 0.5
+
+        return direction, confidence

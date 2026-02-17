@@ -91,6 +91,17 @@ class TokenizerConfig(BaseSettings):
     max_vocab_size: int = 100
 
 
+class ReturnTargetConfig(BaseSettings):
+    """Return target prediction settings."""
+
+    task: str = "token"  # "token", "return_quantile", "return_regression"
+    n_quantile_classes: int = 5
+    quantile_percentiles: list[float] = Field(
+        default_factory=lambda: [10.0, 30.0, 70.0, 90.0]
+    )
+    per_level_boundaries: bool = True
+
+
 class SequenceModelConfig(BaseSettings):
     """Sequence model settings.
 

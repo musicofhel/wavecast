@@ -9,7 +9,7 @@ WaveCast treats financial time series as **multi-scale symbolic objects**. Inste
 3. **Discover patterns** in both domains — shapelets in wavelet space, word patterns in symbolic space
 4. **Predict** using models matched to each representation — ensemble for features, transformer for tokens
 
-Phase 3 experiments proved Pipeline 2 (SAX token prediction) dominates Pipeline 1 (feature-based ensemble) — 82-91% vs 51-57% directional accuracy. Pipeline 2 is the primary production path; Pipeline 1 remains for research and feature analysis.
+Phase 3 experiments proved Pipeline 2 (SAX token prediction) dominates Pipeline 1 (feature-based ensemble) — 82-91% vs 51-57% symbolic directional accuracy. Pipeline 2 is the primary production path; Pipeline 1 remains for research and feature analysis. **NOTE (Phase 7 audit)**: The "directional accuracy" metric compares SAX word ordinals, not actual price direction. Economic directional accuracy is ~46% — below random. See CLAUDE.md "Model Audit Results" and `.claude/handoff/2026-02-16-model-audit-results.md`.
 
 ## Data Flow
 
@@ -120,7 +120,7 @@ BoW/TF-IDF over SAX words gives a fixed-size feature vector per asset, enabling:
 Level 5 (coarsest, ~32-day trends) is the strongest single predictor at 75.4% token accuracy. Level 1 (finest, ~2-day cycles) adds complementary high-frequency signal at 59.6%. Level 2 contributes marginally. Levels 3 and 4 are pure noise — removing them from the model actually improves accuracy by 1-2%. This suggests the mid-frequency bands carry overlapping information that confuses the transformer.
 
 ### Why P2 over P1? (Phase 3 finding)
-Pipeline 1 (LSTM+XGBoost on daily features) achieves 51-57% directional accuracy on real data — barely above coin flip. Pipeline 2 (WaveletGPT on hourly SAX tokens) achieves 82-91%. The key advantage: hourly resolution gives P2 ~6.5x more training data, and the symbolic representation captures regime transitions that raw features miss. Combining P1+P2 in an ensemble actually hurts — P1's noise corrupts P2's strong signal.
+Pipeline 1 (LSTM+XGBoost on daily features) achieves 51-57% symbolic directional accuracy on real data — barely above coin flip. Pipeline 2 (WaveletGPT on hourly SAX tokens) achieves 82-91% symbolic directional accuracy. The key advantage: hourly resolution gives P2 ~6.5x more training data, and the symbolic representation captures regime transitions that raw features miss. Combining P1+P2 in an ensemble actually hurts — P1's noise corrupts P2's strong signal. **Phase 7 audit caveat**: P2's higher symbolic accuracy does NOT translate to economic value — both pipelines have negative Sharpe ratios. The representation (SAX on coefficient levels) is the bottleneck.
 
 ### Why split before transform?
 Walk-forward splitting must happen at the raw price level, before DWT decomposition or SAX transformation. If you decompose first and then split, the z-normalization statistics leak future information into the training set. Each split gets independently decomposed, normalized, and tokenized. The vocabulary is built from training data only — test sequences get UNK tokens for unseen words.
@@ -187,7 +187,7 @@ Input: [token_ids (B, L), level_ids (B,), sector_ids (B,)]
 - 23,700 training samples, 83-token vocabulary (naturally saturated)
 - Training (full 20-asset run): ~3-4 min on RTX 2060 SUPER
 - Full experiment suite (78 runs): ~2.5 hours
-- **2025 held-out**: 60.8% token accuracy, 95.8% directional accuracy (no overfitting)
+- **2025 held-out**: 60.8% token accuracy, 95.8% symbolic directional accuracy (no overfitting). **Phase 7 audit: economic directional accuracy is ~46% — no tradeable edge.**
 
 ### Phase 4 (HPO + multi-horizon — complete)
 - Optuna-optimized: n_segments=512, embed_dim=128, 6 layers, dropout=0.2 (~600K params)

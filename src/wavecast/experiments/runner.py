@@ -34,7 +34,7 @@ from wavecast.experiments.splitter import (
 from wavecast.models.wavelet_gpt import WaveletGPT
 from wavecast.sax.bow import extract_words
 from wavecast.sax.sax import sax_transform
-from wavecast.tokenizer.dataset import build_sequence_dataset
+from wavecast.tokenizer.dataset import build_return_target_dataset, build_sequence_dataset
 from wavecast.tokenizer.vocabulary import UNK_ID, SAXVocabulary
 from wavecast.wavelets.dwt import decompose
 
@@ -244,7 +244,18 @@ class ExperimentRunner:
         train_prices: dict[str, TimeSeries],
         test_prices: dict[str, TimeSeries],
     ) -> ExperimentResult:
-        """Run the full pipeline on a single pre-split train/test pair."""
+        """Dispatch to task-specific split runner."""
+        if config.task in ("return_quantile", "return_regression"):
+            return self._run_on_split_return_target(config, train_prices, test_prices)
+        return self._run_on_split_token(config, train_prices, test_prices)
+
+    def _run_on_split_token(
+        self,
+        config: ExperimentConfig,
+        train_prices: dict[str, TimeSeries],
+        test_prices: dict[str, TimeSeries],
+    ) -> ExperimentResult:
+        """Run the full token-prediction pipeline on a single pre-split train/test pair."""
         t0 = time.monotonic()
 
         common_tickers = sorted(
@@ -445,6 +456,320 @@ class ExperimentRunner:
             per_level_accuracy=per_level,
             vocab_size=vocab_size,
             unk_rate=unk_rate,
+            n_train_samples=n_train,
+            n_test_samples=n_test,
+            training_time_seconds=elapsed,
+            timestamp=datetime.datetime.now(datetime.UTC).isoformat(),
+        )
+
+    def _run_on_split_return_target(
+        self,
+        config: ExperimentConfig,
+        train_prices: dict[str, TimeSeries],
+        test_prices: dict[str, TimeSeries],
+    ) -> ExperimentResult:
+        """Run the return-target pipeline on a single pre-split train/test pair.
+
+        Same DWT→SAX→tokenize pipeline for INPUT, but computes return targets
+        for y using targets/returns.py.
+        """
+        from wavecast.evaluation.return_eval import evaluate_return_predictions
+        from wavecast.experiments.metrics import compute_return_baselines
+        from wavecast.targets.returns import (
+            assign_quantile_labels,
+            compute_quantile_boundaries,
+            compute_sample_returns,
+        )
+
+        t0 = time.monotonic()
+
+        common_tickers = sorted(
+            set(train_prices.keys()) & set(test_prices.keys())
+        )
+        if not common_tickers:
+            raise PipelineError(
+                "No tickers have data in both train and test periods"
+            )
+
+        dwt_level = 5
+        sax_config = SAXConfig(
+            n_segments=config.n_segments,
+            alphabet_size=config.alphabet_size,
+            word_length=config.word_length,
+            word_stride=config.word_stride,
+        )
+
+        levels_to_use = config.dwt_levels or list(range(1, dwt_level + 1))
+
+        # Phase 1: DWT → SAX → words → vocabulary (same as token pipeline)
+        train_words_all: list[list[str]] = []
+        train_token_seqs: list[MultiLevelTokenSequence] = []
+        test_token_seqs_raw: list[tuple[str, dict[int, list[str]]]] = []
+        # Track n_coeffs and n_symbols per (ticker, level) for return computation
+        train_coeffs_map: dict[tuple[str, int], int] = {}
+        train_symbols_map: dict[tuple[str, int], int] = {}
+        test_coeffs_map: dict[tuple[str, int], int] = {}
+        test_symbols_map: dict[tuple[str, int], int] = {}
+
+        for ticker in common_tickers:
+            train_decomp = decompose(train_prices[ticker], level=dwt_level)
+            test_decomp = decompose(test_prices[ticker], level=dwt_level)
+
+            train_level_words: dict[int, list[str]] = {}
+            test_level_words: dict[int, list[str]] = {}
+
+            for lvl in levels_to_use:
+                train_coeffs = train_decomp.detail_at_level(lvl)
+                if len(train_coeffs) >= 2:
+                    n_seg = min(sax_config.n_segments, len(train_coeffs))
+                    train_sax = sax_transform(
+                        train_coeffs, n_seg, sax_config.alphabet_size
+                    )
+                    tw = extract_words(
+                        train_sax.symbols,
+                        sax_config.word_length,
+                        sax_config.word_stride,
+                    )
+                    train_level_words[lvl] = tw
+                    train_words_all.append(tw)
+                    train_coeffs_map[(ticker, lvl)] = len(train_coeffs)
+                    train_symbols_map[(ticker, lvl)] = len(train_sax.symbols)
+
+                test_coeffs = test_decomp.detail_at_level(lvl)
+                if len(test_coeffs) >= 2:
+                    n_seg = min(sax_config.n_segments, len(test_coeffs))
+                    test_sax = sax_transform(
+                        test_coeffs, n_seg, sax_config.alphabet_size
+                    )
+                    test_level_words[lvl] = extract_words(
+                        test_sax.symbols,
+                        sax_config.word_length,
+                        sax_config.word_stride,
+                    )
+                    test_coeffs_map[(ticker, lvl)] = len(test_coeffs)
+                    test_symbols_map[(ticker, lvl)] = len(test_sax.symbols)
+
+            test_token_seqs_raw.append((ticker, test_level_words))
+            train_token_seqs.append(
+                _words_to_placeholder_mlt(ticker, config.interval, train_level_words)
+            )
+
+        vocabulary = SAXVocabulary.from_corpus(
+            train_words_all,
+            min_freq=config.min_word_freq,
+            max_size=config.max_vocab_size,
+        )
+        vocab_size = vocabulary.size
+
+        train_mlts = _encode_placeholder_mlts(train_token_seqs, vocabulary)
+        test_mlts: list[MultiLevelTokenSequence] = []
+        for ticker, level_words in test_token_seqs_raw:
+            level_sequences: dict[int, TokenSequence] = {}
+            for lvl, words in level_words.items():
+                token_ids = vocabulary.encode_sequence(words)
+                level_sequences[lvl] = TokenSequence(
+                    token_ids=token_ids,
+                    words=words,
+                    ticker=ticker,
+                    interval=config.interval,
+                    wavelet_level=lvl,
+                )
+            test_mlts.append(
+                MultiLevelTokenSequence(
+                    ticker=ticker,
+                    interval=config.interval,
+                    level_sequences=level_sequences,
+                )
+            )
+
+        asset_class_map = self._build_asset_class_map(common_tickers)
+
+        # Phase 2: Build return-target datasets with metadata
+        train_dataset = build_return_target_dataset(
+            train_mlts, vocabulary, config.context_length, asset_class_map,
+            n_coeffs_map=train_coeffs_map, n_symbols_map=train_symbols_map,
+        )
+        test_dataset = build_return_target_dataset(
+            test_mlts, vocabulary, config.context_length, asset_class_map,
+            n_coeffs_map=test_coeffs_map, n_symbols_map=test_symbols_map,
+        )
+
+        n_train = len(train_dataset.samples)
+        n_test = len(test_dataset.samples)
+
+        if n_train == 0:
+            raise PipelineError("No training samples generated")
+        if n_test == 0:
+            raise PipelineError("No test samples generated")
+
+        X_train, _, _, _ = train_dataset.to_arrays()
+        X_test, _, _, _ = test_dataset.to_arrays()
+
+        train_levels = np.array([s.level for s in train_dataset.samples], dtype=np.int64)
+        train_ac = np.array([s.asset_class_id for s in train_dataset.samples], dtype=np.int64)
+        test_levels = np.array([s.level for s in test_dataset.samples], dtype=np.int64)
+        test_ac = np.array([s.asset_class_id for s in test_dataset.samples], dtype=np.int64)
+
+        X_train_full = np.column_stack([X_train, train_levels, train_ac])
+        X_test_full = np.column_stack([X_test, test_levels, test_ac])
+
+        # Phase 3: Compute return targets from price data
+        # For each ticker, compute returns for train and test samples
+        def _compute_returns_for_dataset(
+            dataset, prices_dict, coeffs_map, symbols_map
+        ):
+            token_positions = np.array(
+                [s.token_position for s in dataset.samples], dtype=np.int64
+            )
+            levels = np.array([s.level for s in dataset.samples], dtype=np.int64)
+            nc = np.array([s.n_coeffs for s in dataset.samples], dtype=np.int64)
+            ns = np.array([s.n_symbols for s in dataset.samples], dtype=np.int64)
+
+            # Build per-ticker index
+            sample_tickers: list[str] = []
+            for mlt in (train_mlts if dataset is train_dataset else test_mlts):
+                for _lvl, seq in mlt.level_sequences.items():
+                    n_samp = max(0, len(seq.token_ids) - config.context_length)
+                    sample_tickers.extend([mlt.ticker] * n_samp)
+
+            all_returns = np.full(len(dataset.samples), np.nan)
+            all_valid = np.zeros(len(dataset.samples), dtype=np.bool_)
+
+            if len(sample_tickers) == len(dataset.samples):
+                ticker_arr = np.array(sample_tickers)
+                for t in set(sample_tickers):
+                    mask = ticker_arr == t
+                    if t not in prices_dict:
+                        continue
+                    price_values = prices_dict[t].values
+                    t_returns, t_valid = compute_sample_returns(
+                        token_positions[mask], levels[mask], price_values,
+                        nc[mask], ns[mask],
+                    )
+                    all_returns[mask] = t_returns
+                    all_valid[mask] = t_valid
+
+            return all_returns, all_valid, levels
+
+        train_returns, train_valid, train_lvls = _compute_returns_for_dataset(
+            train_dataset, train_prices, train_coeffs_map, train_symbols_map
+        )
+        test_returns, test_valid, test_lvls = _compute_returns_for_dataset(
+            test_dataset, test_prices, test_coeffs_map, test_symbols_map
+        )
+
+        # Compute quantile boundaries from training returns
+        percentiles = config.quantile_percentiles or [10.0, 30.0, 70.0, 90.0]
+        n_classes = config.n_quantile_classes
+
+        boundaries = compute_quantile_boundaries(
+            train_returns, train_lvls, train_valid,
+            percentiles=percentiles, per_level=config.per_level_boundaries,
+        )
+
+        # Assign labels
+        y_train_labels = assign_quantile_labels(train_returns, train_lvls, boundaries)
+        y_test_labels = assign_quantile_labels(test_returns, test_lvls, boundaries)
+
+        # For regression, use raw returns; for quantile, use labels
+        is_regression = config.task == "return_regression"
+        if is_regression:
+            y_train_target = np.where(train_valid, train_returns, 0.0).astype(np.float64)
+            y_test_target = np.where(test_valid, test_returns, 0.0).astype(np.float64)
+        else:
+            y_train_target = y_train_labels.astype(np.float64)
+            y_test_target = y_test_labels.astype(np.float64)
+
+        # Compute class weights for quantile task (inverse frequency)
+        class_weights = None
+        if not is_regression and train_valid.any():
+            valid_labels = y_train_labels[train_valid]
+            counts = np.bincount(valid_labels, minlength=n_classes).astype(np.float64)
+            counts = np.maximum(counts, 1.0)  # avoid div by zero
+            inv_freq = 1.0 / counts
+            class_weights = (inv_freq / inv_freq.sum() * n_classes).tolist()
+
+        # Phase 4: Train model
+        model = WaveletGPT(
+            vocab_size=vocab_size,
+            context_length=config.context_length,
+            embed_dim=config.embed_dim,
+            num_heads=config.num_heads,
+            num_layers=config.num_layers,
+            dropout=config.dropout,
+            epochs=config.epochs,
+            batch_size=config.batch_size,
+            learning_rate=config.learning_rate,
+            patience=config.patience,
+            task=config.task,
+            n_output_classes=n_classes if not is_regression else None,
+            class_weights=class_weights,
+        )
+
+        model.fit(X_train_full, y_train_target, X_val=X_test_full, y_val=y_test_target)
+
+        # Phase 5: Evaluate
+        predicted = model.predict(X_test_full)
+
+        if is_regression:
+            # For regression, convert predictions to quantile labels for metrics
+            pred_labels = assign_quantile_labels(predicted, test_lvls, boundaries)
+            actual_labels = y_test_labels
+        else:
+            pred_labels = predicted.astype(np.int64)
+            actual_labels = y_test_labels
+
+        return_metrics = evaluate_return_predictions(
+            pred_labels, test_returns, actual_labels, n_classes=n_classes,
+        )
+
+        # Compute return-specific baselines
+        return_baselines = compute_return_baselines(
+            y_train_labels[train_valid], y_test_labels[test_valid], n_classes,
+        )
+
+        # Bootstrap CIs
+        def _quantile_acc(preds: NDArray, actuals: NDArray) -> float:
+            return float(np.mean(preds == actuals))
+
+        token_ci = compute_bootstrap_ci(_quantile_acc, pred_labels[test_valid], actual_labels[test_valid])
+
+        def _dir_acc_return(preds: NDArray, actuals: NDArray) -> float:
+            mid = n_classes // 2
+            pred_dir = np.zeros_like(preds, dtype=np.float64)
+            pred_dir[preds > mid] = 1.0
+            pred_dir[preds < mid] = -1.0
+            actual_dir = np.sign(actuals)
+            has_dir = actual_dir != 0.0
+            if np.any(has_dir):
+                return float(np.mean(pred_dir[has_dir] == actual_dir[has_dir]))
+            return 0.5
+
+        dir_ci = compute_bootstrap_ci(_dir_acc_return, pred_labels[test_valid], test_returns[test_valid])
+
+        per_level: dict[int, float] = {}
+        for lvl in sorted(set(int(v) for v in test_lvls)):
+            mask = (test_lvls == lvl) & test_valid
+            if np.any(mask):
+                per_level[lvl] = float(np.mean(pred_labels[mask] == actual_labels[mask]))
+
+        elapsed = time.monotonic() - t0
+
+        return ExperimentResult(
+            config=config,
+            token_accuracy=return_metrics.quantile_accuracy,
+            token_accuracy_ci=token_ci,
+            top3_accuracy=0.0,  # not applicable for return targets
+            directional_accuracy=return_metrics.directional_accuracy,
+            directional_accuracy_ci=dir_ci,
+            baseline_most_frequent=return_baselines.get("always_flat", 0.0),
+            baseline_persistence=return_baselines.get("random", 0.0),
+            baseline_momentum=return_baselines.get("always_up", 0.0),
+            per_asset_accuracy={},
+            per_sector_accuracy={},
+            per_level_accuracy=per_level,
+            vocab_size=vocab_size,
+            unk_rate=0.0,
             n_train_samples=n_train,
             n_test_samples=n_test,
             training_time_seconds=elapsed,

@@ -25,3 +25,4 @@ class ForwardTestConfig(BaseSettings):
     sax: SAXConfig = Field(default_factory=SAXConfig)
     signal: SignalConfig = Field(default_factory=SignalConfig)
     log_dir: Path = Field(default_factory=lambda: Path.home() / ".wavecast" / "forward_tests")
+    retrain_after_days: int | None = None

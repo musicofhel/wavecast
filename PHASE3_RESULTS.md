@@ -310,7 +310,7 @@ The final model was trained on the **extended period** (2021-02-01 to 2024-12-31
 
 2. **Context length beyond 16**: Context=32 is within noise of 16 on most metrics. With more data, longer contexts might help.
 
-3. **The model predicts SAX tokens, not prices directly**: High token accuracy does not automatically translate to profitable trading strategies. The gap between statistical prediction and economic value needs further investigation.
+3. ~~**The model predicts SAX tokens, not prices directly**~~: **RESOLVED by Phase 7 audit — NO economic value.** High token accuracy does NOT translate to profitable trading. Economic directional accuracy is ~46% (below random). See Phase 7 addendum below.
 
 ---
 
@@ -343,3 +343,47 @@ The final model was trained on the **extended period** (2021-02-01 to 2024-12-31
 5. **Additional asset classes**: Test on international equities, fixed income, and higher-frequency data.
 
 6. **Online learning**: Explore incremental vocabulary updates and model fine-tuning as new data arrives.
+
+---
+
+## Phase 7 Model Audit Addendum (2026-02-16)
+
+**This addendum supersedes the "Honest Assessment" section above.** A comprehensive 13-analysis audit (`scripts/model_audit.py`) was run on the same held-out 2025 data. The audit mapped SAX token predictions back to actual price returns and evaluated economic — not just statistical — performance.
+
+### Key Finding: NO Tradeable Edge
+
+The metrics reported in this document (60.8% token accuracy, 95.8% directional accuracy) are **statistically real but economically meaningless**.
+
+| Metric | Phase 3 Report | Phase 7 Audit |
+|--------|---------------|---------------|
+| Token accuracy | 60.8% | 62.4% (confirmed) |
+| Directional accuracy | 95.8% | 95.8% (SYMBOLIC — compares SAX ordinals, not price direction) |
+| Economic directional accuracy | Not measured | **~46.5% (below 50% random)** |
+| Sharpe ratio (fixed sizing) | Not measured | **-0.5573** |
+| Sharpe ratio (Kelly) | Not measured | **+0.18 (artifact — near-zero positions)** |
+
+### Why This Happened
+
+1. **`level0_directional_accuracy`** (in `experiments/metrics.py`) compares SAX word ordinal indices — when `predicted_word == actual_word`, it counts as "correct direction." With 45% of predictions being persistence (same token as last), this inflates to 95%+.
+
+2. **SAX tokens encode wavelet coefficient levels, not price direction.** A token that accurately predicts the coefficient magnitude tells you nothing about whether the price went up or down.
+
+3. **Level 5's 87.4% token accuracy is persistence.** Level 5 tokens change only 17.4% of the time (mean run length = 7 tokens). Predicting "same" gives high accuracy but zero economic value.
+
+4. **Confidence calibration is perfect for tokens, useless for trading.** Token accuracy scales beautifully with softmax confidence (36%→93% across deciles). Economic directional accuracy is FLAT at ~46% regardless of confidence.
+
+### What Still Works
+
+- The **signal generation framework** (Phase 5) works correctly — the problem is upstream in the representation.
+- The **forward testing framework** (Phase 7) works correctly and is ready for use once a representation with economic edge is found.
+- The **experiment framework** (Phase 3) is robust — overlapping windows don't inflate metrics (Q5 subsampling confirmed stability).
+
+### Path Forward
+
+The representation must change before any further pipeline optimization:
+- Predict **signed returns** (regression) or **return quantiles** (classification on return buckets)
+- Apply SAX to **returns series** instead of coefficient levels
+- Predict **direction of change** (delta between consecutive coefficients)
+- Add a **magnitude prediction head** alongside discrete tokens
+
+Full audit details: `~/.wavecast/audit/model_audit_results.json` and `.claude/handoff/2026-02-16-model-audit-results.md`.

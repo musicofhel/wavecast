@@ -197,3 +197,55 @@ def compute_baselines(
         "persistence": persistence_acc,
         "momentum": momentum_acc,
     }
+
+
+def compute_return_baselines(
+    train_labels: NDArray,
+    test_labels: NDArray,
+    n_classes: int = 5,
+) -> dict[str, float]:
+    """Compute baseline accuracy metrics for return-target prediction.
+
+    Args:
+        train_labels: Quantile class labels from training data (valid samples only).
+        test_labels: Quantile class labels from test data (valid samples only).
+        n_classes: Number of quantile classes.
+
+    Returns:
+        Dict with keys 'always_up', 'always_flat', 'random', 'level_majority'.
+    """
+    n = len(test_labels)
+    if n == 0:
+        return {
+            "always_up": 0.0,
+            "always_flat": 0.0,
+            "random": 0.0,
+            "level_majority": 0.0,
+        }
+
+    mid_class = n_classes // 2  # 2 for 5-class = FLAT
+
+    # Always predict UP (class n_classes-1 = strong_up, or n_classes-2 = up)
+    # Use "any UP" (classes > mid_class)
+    always_up_acc = float(np.mean(test_labels > mid_class))
+
+    # Always predict FLAT (mid_class)
+    always_flat_acc = float(np.mean(test_labels == mid_class))
+
+    # Random: 1/n_classes accuracy
+    random_acc = 1.0 / n_classes
+
+    # Level majority: predict the most common class from training
+    if len(train_labels) > 0:
+        train_counter = Counter(int(t) for t in train_labels)
+        majority_class = train_counter.most_common(1)[0][0]
+        level_majority_acc = float(np.mean(test_labels == majority_class))
+    else:
+        level_majority_acc = random_acc
+
+    return {
+        "always_up": always_up_acc,
+        "always_flat": always_flat_acc,
+        "random": random_acc,
+        "level_majority": level_majority_acc,
+    }

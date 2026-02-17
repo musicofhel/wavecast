@@ -8,7 +8,7 @@ from wavecast.signals.config import (
     TransactionCostConfig,
 )
 from wavecast.signals.costs import TransactionCostModel
-from wavecast.signals.generator import SignalGenerator
+from wavecast.signals.generator import ReturnSignalGenerator, SignalGenerator
 from wavecast.signals.position import PositionSizer
 from wavecast.signals.types import (
     SignalBacktestResult,
@@ -19,6 +19,7 @@ from wavecast.signals.types import (
 
 __all__ = [
     "SignalBacktest",
+    "ReturnSignalGenerator",
     "SignalGenerator",
     "PositionSizer",
     "TransactionCostModel",

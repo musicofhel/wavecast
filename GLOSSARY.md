@@ -80,7 +80,7 @@ Quick reference for the domain-specific terms used throughout the codebase.
 |------|-----------|---------------|
 | **Token accuracy** | Exact match rate: predicted token == actual next token. | `evaluation/token_eval.py` |
 | **Top-3 accuracy** | Rate at which the correct token is in the top 3 predictions by probability. | `evaluation/token_eval.py` |
-| **Directional accuracy** | Whether the predicted token implies the same price direction as the actual. Level-0 only for multi-level SAX. | `experiments/metrics.py` |
+| **Directional accuracy (symbolic)** | Whether the predicted token has the same SAX word ordinal relationship as the actual. **WARNING**: This is a SYMBOLIC metric comparing token ordinals, NOT actual price direction. Phase 7 audit showed economic directional accuracy is ~46% (below random) while symbolic is 95.8%. Level-0 only for multi-level SAX. | `experiments/metrics.py` |
 | **Walk-forward** | Train on window [0, T], test on [T, T+k], slide forward. Prevents look-ahead bias in financial backtests. | `evaluation/backtest.py` |
 | **Sharpe ratio** | Risk-adjusted return: mean(returns) / std(returns) × √252. Higher = better risk/reward. | `evaluation/metrics.py` |
 

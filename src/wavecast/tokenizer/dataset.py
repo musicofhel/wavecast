@@ -20,6 +20,10 @@ class SequenceSample:
     level: int
     asset_class_id: int
     targets: dict[int, int] = field(default_factory=dict)
+    # Metadata for return target computation (populated by build_return_target_dataset)
+    token_position: int = 0
+    n_coeffs: int = 0
+    n_symbols: int = 0
 
 
 @dataclass
@@ -156,6 +160,85 @@ def build_sequence_dataset(
                         level=level,
                         asset_class_id=asset_class_id,
                         targets=targets,
+                    )
+                )
+
+    return dataset
+
+
+def build_return_target_dataset(
+    token_sequences: list[MultiLevelTokenSequence],
+    vocabulary: SAXVocabulary,
+    context_length: int = 32,
+    asset_class_map: dict[str, int] | None = None,
+    n_coeffs_map: dict[tuple[str, int], int] | None = None,
+    n_symbols_map: dict[tuple[str, int], int] | None = None,
+) -> SequenceDataset:
+    """Build a sequence dataset with metadata for return target computation.
+
+    Same sliding-window logic as build_sequence_dataset(), but records
+    token_position, n_coeffs, and n_symbols per sample so that return
+    targets can be computed post-hoc via targets.returns.
+
+    Args:
+        token_sequences: List of multi-level token sequences.
+        vocabulary: SAX vocabulary (used for PAD token ID).
+        context_length: Number of tokens in each context window.
+        asset_class_map: Optional mapping from ticker to asset class ID.
+        n_coeffs_map: Mapping from (ticker, level) to number of DWT coefficients.
+        n_symbols_map: Mapping from (ticker, level) to number of SAX symbols.
+
+    Returns:
+        SequenceDataset with metadata fields populated.
+    """
+    dataset = SequenceDataset()
+
+    for mlt in token_sequences:
+        asset_class_id = (
+            asset_class_map.get(mlt.ticker, 0) if asset_class_map else 0
+        )
+
+        for level, seq in mlt.level_sequences.items():
+            tokens = seq.token_ids
+            if len(tokens) == 0:
+                continue
+
+            nc = (
+                n_coeffs_map.get((mlt.ticker, level), 0)
+                if n_coeffs_map
+                else 0
+            )
+            ns = (
+                n_symbols_map.get((mlt.ticker, level), 0)
+                if n_symbols_map
+                else 0
+            )
+
+            # Pad short sequences on the left
+            pad_offset = 0
+            if len(tokens) <= context_length:
+                pad_count = context_length + 1 - len(tokens)
+                padded = [PAD_ID] * pad_count + tokens
+                pad_offset = pad_count
+                tokens = padded
+
+            # Sliding window: context[i:i+ctx_len] -> target[i+ctx_len]
+            end_idx = len(tokens) - context_length
+            for i in range(max(0, end_idx)):
+                context = tokens[i : i + context_length]
+                target = tokens[i + context_length]
+                # token_position in the original (unpadded) symbol space
+                token_pos = i + context_length - pad_offset
+
+                dataset.samples.append(
+                    SequenceSample(
+                        context_tokens=context,
+                        target_token=target,
+                        level=level,
+                        asset_class_id=asset_class_id,
+                        token_position=token_pos,
+                        n_coeffs=nc,
+                        n_symbols=ns,
                     )
                 )
 

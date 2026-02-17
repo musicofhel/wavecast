@@ -55,3 +55,9 @@ class ExperimentConfig:
     # Multi-asset grouping
     sectors: list[str] | None = None
     cross_sector_training: bool = True
+
+    # Return target settings (Phase 8)
+    task: str = "token"  # "token", "return_quantile", "return_regression"
+    n_quantile_classes: int = 5
+    quantile_percentiles: list[float] | None = None
+    per_level_boundaries: bool = True

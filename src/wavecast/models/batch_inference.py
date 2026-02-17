@@ -80,10 +80,13 @@ class BatchPredictor:
         net = self._model._net
         device = self._model._device
 
-        ctx, lvl, ac = self._model._parse_x(X)
+        ctx, lvl, ac, aux = self._model._parse_x(X)
         ctx_t = torch.tensor(ctx, dtype=torch.long, device=device)
         lvl_t = torch.tensor(lvl, dtype=torch.long, device=device)
         ac_t = torch.tensor(ac, dtype=torch.long, device=device)
+        aux_t = None
+        if aux is not None:
+            aux_t = torch.tensor(aux, dtype=torch.float32, device=device)
 
         with torch.inference_mode():
             amp_enabled = self._use_amp and device.type == "cuda"
@@ -92,7 +95,7 @@ class BatchPredictor:
                 dtype=torch.float16,
                 enabled=amp_enabled,
             ):
-                logits_dict = net(ctx_t, lvl_t, ac_t)
+                logits_dict = net(ctx_t, lvl_t, ac_t, aux_features=aux_t)
 
         logits = logits_dict[horizon]
         if return_proba:

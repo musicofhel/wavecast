@@ -105,27 +105,70 @@ Rust/PyO3 acceleration, AMP mixed-precision, memory-mapped datasets, batch infer
 - [x] CLI: `--batch-size` and `--use-amp` flags on signal backtest command
 - [x] 391 tests passing (42 new)
 
+### Phase 7: Forward Testing & Model Audit (v0.7.0)
+Forward testing framework for paper trading, plus comprehensive model audit revealing critical economic validity issues.
+
+- [x] Forward testing module (`src/wavecast/forward/`, 7 files, ~600 LOC)
+- [x] `ForwardTestRunner`: fetch → resolve → DWT/SAX/tokenize → predict → log cycle
+- [x] `ForwardTestTracker`: JSONL prediction logging, resolution, rolling metrics
+- [x] `ForwardTestConfig`: Pydantic BaseSettings, standalone (not in WaveCastConfig)
+- [x] Text + JSON report generation
+- [x] CLI: `wavecast forward run/status/report/list`
+- [x] Training script: `scripts/train_forward_model.py` (20 tickers, 2021-2024)
+- [x] Model artifacts saved: `~/.wavecast/models/forward_ready/` (model.pt, config.json, vocabulary.json)
+- [x] First live forward test run (AAPL, MSFT, GOOGL, SPY on 1h)
+- [x] Bug fixes: 5x intraday buffer, 300 lookback bars (DWT level 5 needs ≥224)
+- [x] 33 forward testing tests (424 total)
+- [x] **Model audit** (`scripts/model_audit.py`, ~550 LOC, 13 analyses)
+- [x] Audit results: `~/.wavecast/audit/model_audit_results.json`
+- [x] Handoff: `.claude/handoff/2026-02-16-model-audit-results.md`
+
+### Phase 7 Model Audit — Critical Findings
+
+**The model has NO tradeable edge.** The 95.8% directional accuracy is purely symbolic (compares SAX word ordinals, not price direction). Economic directional accuracy is ~46% — worse than a coin flip.
+
+| Finding | Value |
+|---------|-------|
+| Token accuracy (confirmed) | 62.4% |
+| Economic directional accuracy | ~46.5% (below 50% random) |
+| Symbolic directional accuracy | 95.8% (meaningless — ordinal comparison) |
+| Persistence predictions | 45.2% of all predictions are "same as last" |
+| Persistence token accuracy | 79.2% (just reflects token repetition) |
+| Change prediction accuracy | 48.5% (near random) |
+| Fixed-sizing Sharpe | -0.5573 |
+| Kelly Sharpe | +0.18 (artifact — near-zero positions) |
+| Level 5 token persistence | 82.6% identical to previous |
+| Confidence → economic direction | FLAT (~46%) across all deciles |
+| Random baseline comparison | Model at 84th percentile (doesn't exceed P95) |
+
+**Root cause**: The model learns SAX token statistics, not price dynamics. SAX tokens don't encode price direction — they encode wavelet coefficient levels. High token accuracy is real but economically meaningless.
+
 ## Current Focus
 
-Phases 1-6 complete. The library now has a full pipeline from raw data through signal generation, with Rust acceleration and GPU optimization. Next priority is forward testing under paper trading conditions.
+**Phases 1-7 complete. The model audit (Phase 7) proved the current representation has no economic edge.** The critical path is fixing the target variable / representation before any production deployment. Do NOT optimize the current pipeline further — the SAX representation is the bottleneck, not the model architecture, position sizing, or signal generation.
 
 ## Future Phases
 
-### Phase 7: Multi-Timeframe & Forward Testing
-- [ ] Paper trading forward test: run signal pipeline on live hourly data, log predictions vs actual outcomes
-- [ ] Forward test metrics dashboard: track cumulative accuracy, PnL, drawdown over time
-- [ ] Sub-hourly intervals (15m, 5m) from Massive.com (hourly already validated in Phase 3)
-- [ ] Timeframe-aware SAX (different params per interval)
-- [ ] Hierarchical model: hourly predictions inform sub-hourly context
-- [ ] Streaming mode: online vocabulary updates, incremental training
+### Phase 8: Representation Rethink (REQUIRED before production)
+The Phase 7 audit proved SAX tokens don't encode price direction. Options to explore:
+- [ ] **Directly predict signed returns** (regression head instead of token classification)
+- [ ] **Predict return quantiles** (classification on return buckets, not coefficient levels)
+- [ ] **SAX on returns series** instead of price/coefficient levels
+- [ ] **Predict direction of CHANGE** (delta between consecutive coefficients, not the level itself)
+- [ ] **Magnitude recovery**: separate magnitude prediction head or continuous targets alongside tokens
+- [ ] **Reconstruction-aware training loss**: penalize predictions that map to wrong economic direction
+- [ ] Re-run model audit after each change to validate economic edge
 
-### Phase 8: Production
+### Phase 9: Production (blocked on Phase 8 edge)
 - [ ] FastAPI service for real-time predictions
 - [ ] Streamlit dashboard for visualization and forward test monitoring
 - [ ] Scheduled retraining pipeline (periodic re-fit on new data)
 - [ ] Model versioning + A/B testing
 - [ ] Alert system for regime changes
 - [ ] Docker deployment
+- [ ] Sub-hourly intervals (15m, 5m)
+- [ ] Hierarchical model: hourly predictions inform sub-hourly context
+- [ ] Streaming mode: online vocabulary updates, incremental training
 
 ## Research Questions — Answered (Phase 3)
 
@@ -145,10 +188,11 @@ Phases 1-6 complete. The library now has a full pipeline from raw data through s
 4. ~~**Per-sector fine-tuning**~~: **Answered by F6**: Hurts ALL 6 sectors. Cross-sector definitively confirmed.
 5. ~~**Temporal stability**~~: **Answered by D3**: Yes — 60.8% token acc (vs 63.0% on 2024), 95.8% dir acc (vs 99.7%).
 6. ~~**Multi-horizon utility**~~: **Answered by Phase 4**: h=1-2 useful for trading signals. h=4+ only useful for directional bias, not token-level prediction.
-7. ~~**Signal-to-PnL gap**~~: **Addressed by Phase 5**: SignalGenerator + SignalBacktest with transaction costs, position sizing (Kelly), and 16 risk metrics. Need forward testing to validate on live data.
-8. **Forward test validation**: Does backtested signal quality hold up on truly live, unseen data? Paper trading will answer this.
-9. **Sub-hourly resolution**: Does 15m/5m data improve h=1 signal quality, or does noise dominate?
-10. **Regime-adaptive sizing**: Should position sizing adjust based on detected market regime (trending vs mean-reverting)?
+7. ~~**Signal-to-PnL gap**~~: **Answered by Phase 7 audit**: SignalGenerator + SignalBacktest with transaction costs, position sizing (Kelly), and 16 risk metrics. **Result: negative Sharpe (-0.56). No tradeable edge.** The gap is in the representation (SAX tokens don't encode price direction), not in the signal/backtest pipeline.
+8. ~~**Forward test validation**~~: **Answered by Phase 7**: Forward testing framework built and working. First live run succeeded. But the model audit proved the underlying predictions have no economic edge (~46% directional accuracy).
+9. **Representation redesign**: Can predicting return quantiles, signed returns, or coefficient deltas instead of SAX levels produce an actual economic edge?
+10. **Sub-hourly resolution**: Does 15m/5m data improve h=1 signal quality, or does noise dominate?
+11. **Regime-adaptive sizing**: Should position sizing adjust based on detected market regime (trending vs mean-reverting)?
 
 ## Non-Goals (Explicit)
 
