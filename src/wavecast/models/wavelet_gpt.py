@@ -28,6 +28,43 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class AsymmetricLoss(nn.Module):
+    """Cost-weighted cross-entropy with explicit cost matrix.
+
+    Applies different weights to different types of misclassification.
+    For trading: false positives (wrong trades) cost more than false negatives.
+    """
+
+    def __init__(
+        self,
+        n_classes: int = 5,
+        fp_fn_ratio: float = 5.0,
+    ) -> None:
+        super().__init__()
+        self.n_classes = n_classes
+        mid = n_classes // 2
+        # Build cost matrix: higher penalty for directional errors
+        cost = torch.ones(n_classes, n_classes)
+        for i in range(n_classes):
+            for j in range(n_classes):
+                if i == j:
+                    cost[i, j] = 0.0
+                elif (i > mid and j < mid) or (i < mid and j > mid):
+                    # Opposite direction prediction: highest cost
+                    cost[i, j] = fp_fn_ratio
+                elif abs(i - j) > 1:
+                    cost[i, j] = fp_fn_ratio / 2
+        self.register_buffer("cost_matrix", cost)
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        proba = torch.softmax(logits, dim=-1)
+        # Expected cost for each sample
+        costs = self.cost_matrix[targets]  # (batch, n_classes)
+        # Weighted negative log-likelihood
+        loss = (costs * (-torch.log(proba + 1e-10))).sum(dim=-1).mean()
+        return loss
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -203,6 +240,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +257,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -320,7 +361,16 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
-        # Classification: CrossEntropy
+
+        # Asymmetric loss dispatch
+        if self._loss_type == "asymmetric":
+            n_classes = self._n_output_classes or 5
+            fp_fn_ratio = self._loss_kwargs.get("fp_fn_ratio", 5.0)
+            return AsymmetricLoss(
+                n_classes=n_classes, fp_fn_ratio=fp_fn_ratio
+            ).to(self._device)
+
+        # Default: Classification CrossEntropy
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
                 self._device
@@ -328,7 +378,6 @@ class WaveletGPT(BaseModel):
             return nn.CrossEntropyLoss(weight=weight)
         if self._task == TASK_TOKEN:
             return nn.CrossEntropyLoss(ignore_index=0)  # ignore PAD
-        # return_quantile: no ignore_index (classes 0-4 are all valid)
         return nn.CrossEntropyLoss()
 
     def fit(
