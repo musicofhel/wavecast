@@ -28,6 +28,56 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class RankNetLoss(nn.Module):
+    """Pairwise ranking loss for ordinal quantile prediction.
+
+    For each pair of samples (i, j) where label_i > label_j, compute:
+        L = log(1 + exp(-sigma * (s_i - s_j)))
+    where s is the model's logit for the correct class.
+
+    This optimizes ranking consistency rather than classification accuracy.
+    """
+
+    def __init__(self, sigma: float = 1.0, n_pairs: int = 256) -> None:
+        super().__init__()
+        self.sigma = sigma
+        self.n_pairs = n_pairs
+
+    def forward(
+        self, logits: torch.Tensor, targets: torch.Tensor
+    ) -> torch.Tensor:
+        batch_size = logits.shape[0]
+        if batch_size < 2:
+            return torch.tensor(0.0, device=logits.device, requires_grad=True)
+
+        # Sample random pairs
+        n_pairs = min(self.n_pairs, batch_size * (batch_size - 1) // 2)
+        idx_i = torch.randint(0, batch_size, (n_pairs,), device=logits.device)
+        idx_j = torch.randint(0, batch_size, (n_pairs,), device=logits.device)
+
+        # Filter to pairs where labels differ
+        label_diff = targets[idx_i].float() - targets[idx_j].float()
+        valid = label_diff != 0
+        if valid.sum() == 0:
+            return torch.tensor(0.0, device=logits.device, requires_grad=True)
+
+        idx_i = idx_i[valid]
+        idx_j = idx_j[valid]
+        label_diff = label_diff[valid]
+
+        # Scores: weighted sum of logits (higher class → higher score)
+        weights = torch.arange(logits.shape[1], dtype=torch.float32, device=logits.device)
+        scores = (torch.softmax(logits, dim=-1) * weights).sum(dim=-1)
+
+        s_i = scores[idx_i]
+        s_j = scores[idx_j]
+        s_ij = torch.sign(label_diff)
+
+        # RankNet loss
+        loss = torch.log1p(torch.exp(-self.sigma * s_ij * (s_i - s_j)))
+        return loss.mean()
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -203,6 +253,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +270,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -318,6 +372,9 @@ class WaveletGPT(BaseModel):
 
     def _build_criterion(self) -> nn.Module:
         """Build the appropriate loss function for the task."""
+        if self._loss_type == "ranknet":
+            kwargs = {k: v for k, v in self._loss_kwargs.items()}
+            return RankNetLoss(**kwargs).to(self._device)
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
         # Classification: CrossEntropy
