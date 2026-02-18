@@ -28,6 +28,40 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class SelectiveNetLoss(nn.Module):
+    """SelectiveNet loss (Geifman & El-Yaniv, ICML 2019).
+
+    L = CE / coverage + λ * max(0, target_coverage - coverage)²
+    Jointly optimizes classification and rejection.
+    """
+
+    def __init__(self, target_coverage: float = 0.7, lam: float = 32.0) -> None:
+        super().__init__()
+        self.target_coverage = target_coverage
+        self.lam = lam
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        reject_scores: torch.Tensor,
+    ) -> torch.Tensor:
+        # reject_scores: (batch,) in [0,1], where higher = more likely to accept
+        coverage = reject_scores.mean()
+        coverage = torch.clamp(coverage, min=0.01)
+
+        # Per-sample CE weighted by acceptance score
+        ce = nn.functional.cross_entropy(logits, targets, reduction="none")
+        selective_risk = (ce * reject_scores).sum() / (coverage * len(targets))
+
+        # Coverage penalty
+        penalty = self.lam * torch.clamp(
+            self.target_coverage - coverage, min=0.0
+        ) ** 2
+
+        return selective_risk + penalty
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -59,6 +93,7 @@ class WaveletGPTNet(nn.Module):
         n_output_classes: int | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        reject_head: bool = False,
     ) -> None:
         super().__init__()
         self.context_length = context_length
@@ -67,6 +102,7 @@ class WaveletGPTNet(nn.Module):
         self.task = task
         self.input_mode = input_mode
         self.n_aux_features = n_aux_features
+        self.reject_head = reject_head
 
         # Input projection: token embedding or continuous linear
         if input_mode == INPUT_CONTINUOUS:
@@ -121,6 +157,14 @@ class WaveletGPTNet(nn.Module):
                 head.weight = self.token_embed.weight  # Weight tying
             self.heads[str(h)] = head
 
+        if reject_head:
+            self.rejection = nn.Sequential(
+                nn.Linear(embed_dim, embed_dim // 2),
+                nn.ReLU(),
+                nn.Linear(embed_dim // 2, 1),
+                nn.Sigmoid(),
+            )
+
     def forward(
         self,
         token_ids: torch.Tensor,  # (batch, context_length) — int64 or float32
@@ -165,6 +209,9 @@ class WaveletGPTNet(nn.Module):
         for h in self.prediction_horizons:
             logits_dict[h] = self.heads[str(h)](last_hidden)  # (batch, output_dim)
 
+        if self.reject_head:
+            logits_dict["reject"] = self.rejection(last_hidden).squeeze(-1)
+
         return logits_dict
 
 
@@ -203,6 +250,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +267,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -320,6 +371,14 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
+
+        if self._loss_type == "selectivenet":
+            target_cov = self._loss_kwargs.get("target_coverage", 0.7)
+            lam = self._loss_kwargs.get("lam", 32.0)
+            return SelectiveNetLoss(
+                target_coverage=target_cov, lam=lam
+            ).to(self._device)
+
         # Classification: CrossEntropy
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
@@ -346,6 +405,7 @@ class WaveletGPT(BaseModel):
             amp_enabled = False
 
         # Build network
+        use_reject_head = self._loss_type == "selectivenet"
         self._net = WaveletGPTNet(
             vocab_size=self._config["vocab_size"],
             context_length=self._config["context_length"],
@@ -360,6 +420,7 @@ class WaveletGPT(BaseModel):
             n_output_classes=self._n_output_classes,
             input_mode=self._input_mode,
             n_aux_features=self._n_aux_features,
+            reject_head=use_reject_head,
         ).to(self._device)
 
         optimizer = torch.optim.AdamW(
@@ -458,12 +519,16 @@ class WaveletGPT(BaseModel):
                     logits_dict = self._net(ctx_b, lvl_b, ac_b, aux_features=aux_b)
 
                     loss = torch.tensor(0.0, device=self._device)
+                    reject_scores = logits_dict.get("reject")
                     for i, h in enumerate(self._prediction_horizons):
                         output = logits_dict[h]
                         target = target_bs[i]
                         if is_regression:
-                            # Squeeze output from (batch, 1) to (batch,)
                             h_loss = criterion(output.squeeze(-1), target)
+                        elif reject_scores is not None and isinstance(
+                            criterion, SelectiveNetLoss
+                        ):
+                            h_loss = criterion(output, target, reject_scores)
                         else:
                             h_loss = criterion(output, target)
                         loss = loss + weights[h] * h_loss
@@ -625,6 +690,34 @@ class WaveletGPT(BaseModel):
         if self._task == TASK_RETURN_REGRESSION:
             return output.squeeze(-1).cpu().numpy()
         return torch.softmax(output, dim=-1).cpu().numpy()
+
+    def predict_rejection(self, X: NDArray) -> NDArray:
+        """Return per-sample rejection scores from the rejection head."""
+        if self._net is None:
+            raise ModelNotTrainedError("Model has not been trained")
+        if not getattr(self._net, "reject_head", False):
+            raise ValueError("Model does not have a rejection head")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
+        ctx_dtype = (
+            torch.float32 if self._input_mode == INPUT_CONTINUOUS else torch.long
+        )
+        self._net.eval()
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
+            ctx, lvl, ac, aux = self._parse_x(X)
+            aux_t = None
+            if aux is not None:
+                aux_t = torch.tensor(aux, dtype=torch.float32).to(self._device)
+            logits_dict = self._net(
+                torch.tensor(ctx, dtype=ctx_dtype).to(self._device),
+                torch.tensor(lvl, dtype=torch.long).to(self._device),
+                torch.tensor(ac, dtype=torch.long).to(self._device),
+                aux_features=aux_t,
+            )
+        return logits_dict["reject"].cpu().numpy()
 
     def predict_all_horizons(self, X: NDArray) -> dict[int, NDArray]:
         """Return predictions for all horizons."""
