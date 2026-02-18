@@ -28,6 +28,43 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class FocalLoss(nn.Module):
+    """Focal loss for class-imbalanced classification.
+
+    FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
+
+    Down-weights easy/confident examples, focusing training on hard cases.
+    """
+
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        alpha: torch.Tensor | None = None,
+        reduction: str = "mean",
+    ) -> None:
+        super().__init__()
+        self.gamma = gamma
+        self.reduction = reduction
+        if alpha is not None:
+            self.register_buffer("alpha", alpha)
+        else:
+            self.alpha = None
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        ce_loss = nn.functional.cross_entropy(logits, targets, reduction="none")
+        pt = torch.exp(-ce_loss)
+        focal_weight = (1 - pt) ** self.gamma
+        if self.alpha is not None:
+            alpha_t = self.alpha[targets]
+            focal_weight = alpha_t * focal_weight
+        loss = focal_weight * ce_loss
+        if self.reduction == "mean":
+            return loss.mean()
+        if self.reduction == "sum":
+            return loss.sum()
+        return loss
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -203,6 +240,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +257,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -320,7 +361,30 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
-        # Classification: CrossEntropy
+
+        # Focal loss dispatch
+        if self._loss_type == "focal":
+            gamma = self._loss_kwargs.get("gamma", 2.0)
+            alpha = None
+            if self._class_weights is not None:
+                alpha = torch.tensor(
+                    self._class_weights, dtype=torch.float32
+                ).to(self._device)
+            return FocalLoss(gamma=gamma, alpha=alpha)
+
+        # Label smoothing dispatch
+        if self._loss_type == "label_smoothing":
+            epsilon = self._loss_kwargs.get("epsilon", 0.1)
+            weight = None
+            if self._class_weights is not None:
+                weight = torch.tensor(
+                    self._class_weights, dtype=torch.float32
+                ).to(self._device)
+            return nn.CrossEntropyLoss(
+                weight=weight, label_smoothing=epsilon
+            )
+
+        # Default: Classification CrossEntropy
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
                 self._device
