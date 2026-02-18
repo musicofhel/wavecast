@@ -203,6 +203,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +220,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -320,7 +324,20 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
-        # Classification: CrossEntropy
+
+        # Label smoothing dispatch
+        if self._loss_type == "label_smoothing":
+            epsilon = self._loss_kwargs.get("epsilon", 0.1)
+            weight = None
+            if self._class_weights is not None:
+                weight = torch.tensor(
+                    self._class_weights, dtype=torch.float32
+                ).to(self._device)
+            return nn.CrossEntropyLoss(
+                weight=weight, label_smoothing=epsilon
+            )
+
+        # Default: Classification CrossEntropy
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
                 self._device
