@@ -28,6 +28,51 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class OrdinalLoss(nn.Module):
+    """Ordinal regression loss via cumulative link model.
+
+    For K ordered classes, learns K-1 thresholds theta_1 < ... < theta_{K-1}
+    and a latent score s_i per sample. P(Y <= k) = sigmoid(theta_k - s_i).
+    Loss is BCE across all K-1 binary classifiers.
+    """
+
+    def __init__(self, n_classes: int = 5) -> None:
+        super().__init__()
+        self.n_classes = n_classes
+        # Learnable ordered thresholds (initialized with spacing)
+        init_thresholds = torch.linspace(-2.0, 2.0, n_classes - 1)
+        self.thresholds = nn.Parameter(init_thresholds)
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        # logits: (batch, n_classes) — use first logit as latent score
+        scores = logits[:, 0]  # (batch,)
+        # Build cumulative targets: y_cum[i, k] = 1 if target_i <= k
+        y_cum = (
+            targets.unsqueeze(1)
+            <= torch.arange(self.n_classes - 1, device=targets.device).unsqueeze(0)
+        ).float()
+        # Cumulative probabilities: P(Y <= k) = sigmoid(theta_k - s_i)
+        cum_probs = torch.sigmoid(
+            self.thresholds.unsqueeze(0) - scores.unsqueeze(1)
+        )
+        # BCE loss across all K-1 binary classifiers
+        loss = nn.functional.binary_cross_entropy(
+            cum_probs, y_cum, reduction="mean"
+        )
+        return loss
+
+    def predict(self, logits: torch.Tensor) -> torch.Tensor:
+        """Convert logits to ordinal class predictions."""
+        scores = logits[:, 0]
+        cum_probs = torch.sigmoid(
+            self.thresholds.unsqueeze(0) - scores.unsqueeze(1)
+        )
+        # P(Y = k) = P(Y <= k) - P(Y <= k-1)
+        # Predicted class = first k where P(Y <= k) > 0.5
+        predictions = (cum_probs < 0.5).sum(dim=1)
+        return predictions.clamp(0, self.n_classes - 1)
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -203,6 +248,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +265,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -320,7 +369,13 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
-        # Classification: CrossEntropy
+
+        # Ordinal loss dispatch
+        if self._loss_type == "ordinal":
+            n_classes = self._n_output_classes or 5
+            return OrdinalLoss(n_classes=n_classes).to(self._device)
+
+        # Default: Classification CrossEntropy
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
                 self._device
@@ -362,11 +417,16 @@ class WaveletGPT(BaseModel):
             n_aux_features=self._n_aux_features,
         ).to(self._device)
 
+        criterion = self._build_criterion()
+
+        # Include criterion parameters (e.g., OrdinalLoss thresholds) in optimizer
+        all_params = list(self._net.parameters())
+        if hasattr(criterion, "parameters"):
+            all_params.extend(criterion.parameters())
         optimizer = torch.optim.AdamW(
-            self._net.parameters(), lr=self._config["learning_rate"]
+            all_params, lr=self._config["learning_rate"]
         )
         scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
-        criterion = self._build_criterion()
 
         # Resolve horizon weights
         weights: dict[int, float] = {}
