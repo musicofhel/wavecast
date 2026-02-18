@@ -28,6 +28,33 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class DifferentiableSharpeLoss(nn.Module):
+    """Decision-focused loss: optimize Sharpe ratio directly.
+
+    Maps softmax probabilities to positions via learned direction weights,
+    then computes differentiable Sharpe on the resulting PnL.
+    """
+
+    def __init__(self, n_classes: int = 5, ce_weight: float = 0.5) -> None:
+        super().__init__()
+        self.n_classes = n_classes
+        self.ce_weight = ce_weight
+        # Direction weights: map class probs to position [-1, 1]
+        # q10=-1, q30=-0.5, q50=0, q70=0.5, q90=1
+        directions = torch.linspace(-1, 1, n_classes)
+        self.register_buffer("directions", directions)
+
+    def forward(self, logits: torch.Tensor, returns: torch.Tensor) -> torch.Tensor:
+        probs = torch.softmax(logits, dim=-1)
+        # Expected direction: weighted sum of probs * direction
+        position = (probs * self.directions).sum(dim=-1)  # (batch,)
+        # PnL
+        pnl = position * returns
+        # Differentiable Sharpe (batch-level)
+        sharpe = pnl.mean() / (pnl.std() + 1e-8)
+        return -sharpe  # Minimize negative Sharpe
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -203,6 +230,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +247,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -304,9 +335,14 @@ class WaveletGPT(BaseModel):
         For multi-horizon (y is 2-D with columns matching horizons): returns
         {horizon: y[:, col]} for each horizon.
 
-        Dtype depends on task: float32 for regression, int64 otherwise.
+        Dtype depends on task: float32 for regression/decision_focused, int64 otherwise.
         """
-        target_dtype = np.float32 if self._task == TASK_RETURN_REGRESSION else np.int64
+        is_df = getattr(self, "_loss_type", "ce") == "decision_focused"
+        target_dtype = (
+            np.float32
+            if self._task == TASK_RETURN_REGRESSION or is_df
+            else np.int64
+        )
 
         if y.ndim == 1:
             return {self._prediction_horizons[0]: y.astype(target_dtype)}
@@ -320,6 +356,14 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
+
+        if self._loss_type == "decision_focused":
+            n_classes = self._n_output_classes or 5
+            ce_weight = self._loss_kwargs.get("ce_weight", 0.5)
+            return DifferentiableSharpeLoss(
+                n_classes=n_classes, ce_weight=ce_weight
+            ).to(self._device)
+
         # Classification: CrossEntropy
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
@@ -387,10 +431,11 @@ class WaveletGPT(BaseModel):
             if self._input_mode == INPUT_CONTINUOUS
             else torch.long
         )
-        # Target tensor dtype depends on task
+        # Target tensor dtype depends on task/loss
+        is_decision_focused = self._loss_type == "decision_focused"
         target_torch_dtype = (
             torch.float32
-            if self._task == TASK_RETURN_REGRESSION
+            if self._task == TASK_RETURN_REGRESSION or is_decision_focused
             else torch.long
         )
 
@@ -462,8 +507,10 @@ class WaveletGPT(BaseModel):
                         output = logits_dict[h]
                         target = target_bs[i]
                         if is_regression:
-                            # Squeeze output from (batch, 1) to (batch,)
                             h_loss = criterion(output.squeeze(-1), target)
+                        elif is_decision_focused:
+                            # target is returns (float32)
+                            h_loss = criterion(output, target)
                         else:
                             h_loss = criterion(output, target)
                         loss = loss + weights[h] * h_loss
@@ -551,6 +598,14 @@ class WaveletGPT(BaseModel):
             if is_regression:
                 preds_raw = logits_dict[primary_h].squeeze(-1).cpu().numpy()
                 accuracy = float(1.0 - np.mean((preds_raw - y_primary) ** 2))
+            elif is_decision_focused:
+                # y_primary is returns; compute directional accuracy
+                preds_cls = logits_dict[primary_h].argmax(dim=-1).cpu().numpy()
+                mid = (self._n_output_classes or 5) // 2
+                pred_dir = np.where(preds_cls > mid, 1, np.where(preds_cls < mid, -1, 0))
+                actual_dir = np.sign(y_primary)
+                mask = (pred_dir != 0) & (actual_dir != 0)
+                accuracy = float(np.mean(pred_dir[mask] == actual_dir[mask])) if mask.sum() > 0 else 0.0
             else:
                 preds = logits_dict[primary_h].argmax(dim=-1).cpu().numpy()
                 accuracy = float(np.mean(preds == y_primary))
