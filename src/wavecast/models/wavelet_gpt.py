@@ -28,6 +28,36 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class BetaNLLLoss(nn.Module):
+    """β-NLL loss for heteroscedastic uncertainty estimation.
+
+    Weights each sample by (σ²)^β to stabilize variance estimation.
+    L = (σ²)^β · [0.5 · log(σ²) + 0.5 · CE / σ²]
+    For classification: uses CE as the base loss instead of squared error.
+    """
+
+    def __init__(self, beta: float = 0.5) -> None:
+        super().__init__()
+        self.beta = beta
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        log_var: torch.Tensor,
+    ) -> torch.Tensor:
+        # Per-sample CE loss
+        ce_per_sample = nn.functional.cross_entropy(
+            logits, targets, reduction="none"
+        )
+        # Variance = exp(log_var), squeezed to (batch,)
+        variance = torch.exp(log_var.squeeze(-1))
+        # β-NLL: weight by variance^β, then Gaussian-like loss
+        weight = (variance.detach()) ** self.beta
+        loss = weight * (0.5 * log_var.squeeze(-1) + 0.5 * ce_per_sample / variance)
+        return loss.mean()
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -59,6 +89,7 @@ class WaveletGPTNet(nn.Module):
         n_output_classes: int | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        variance_head: bool = False,
     ) -> None:
         super().__init__()
         self.context_length = context_length
@@ -67,6 +98,7 @@ class WaveletGPTNet(nn.Module):
         self.task = task
         self.input_mode = input_mode
         self.n_aux_features = n_aux_features
+        self.variance_head = variance_head
 
         # Input projection: token embedding or continuous linear
         if input_mode == INPUT_CONTINUOUS:
@@ -121,6 +153,12 @@ class WaveletGPTNet(nn.Module):
                 head.weight = self.token_embed.weight  # Weight tying
             self.heads[str(h)] = head
 
+        # Optional variance head for heteroscedastic models
+        if variance_head:
+            self.log_var_head = nn.Linear(embed_dim, 1)
+            # Initialize to high variance (Stirn et al. recommendation)
+            nn.init.constant_(self.log_var_head.bias, 2.0)
+
     def forward(
         self,
         token_ids: torch.Tensor,  # (batch, context_length) — int64 or float32
@@ -165,6 +203,9 @@ class WaveletGPTNet(nn.Module):
         for h in self.prediction_horizons:
             logits_dict[h] = self.heads[str(h)](last_hidden)  # (batch, output_dim)
 
+        if self.variance_head:
+            logits_dict["log_var"] = self.log_var_head(last_hidden)  # (batch, 1)
+
         return logits_dict
 
 
@@ -203,6 +244,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -218,6 +261,8 @@ class WaveletGPT(BaseModel):
         self._n_aux_features = n_aux_features
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._prediction_horizons = prediction_horizons or [1]
         self._horizon_weights = horizon_weights
         self._use_amp = use_amp
@@ -320,6 +365,12 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
+
+        # β-NLL dispatch
+        if self._loss_type == "beta_nll":
+            beta = self._loss_kwargs.get("beta", 0.5)
+            return BetaNLLLoss(beta=beta)
+
         # Classification: CrossEntropy
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
@@ -346,6 +397,7 @@ class WaveletGPT(BaseModel):
             amp_enabled = False
 
         # Build network
+        use_variance_head = self._loss_type == "beta_nll"
         self._net = WaveletGPTNet(
             vocab_size=self._config["vocab_size"],
             context_length=self._config["context_length"],
@@ -360,6 +412,7 @@ class WaveletGPT(BaseModel):
             n_output_classes=self._n_output_classes,
             input_mode=self._input_mode,
             n_aux_features=self._n_aux_features,
+            variance_head=use_variance_head,
         ).to(self._device)
 
         optimizer = torch.optim.AdamW(
@@ -458,12 +511,16 @@ class WaveletGPT(BaseModel):
                     logits_dict = self._net(ctx_b, lvl_b, ac_b, aux_features=aux_b)
 
                     loss = torch.tensor(0.0, device=self._device)
+                    log_var = logits_dict.get("log_var")
                     for i, h in enumerate(self._prediction_horizons):
                         output = logits_dict[h]
                         target = target_bs[i]
                         if is_regression:
-                            # Squeeze output from (batch, 1) to (batch,)
                             h_loss = criterion(output.squeeze(-1), target)
+                        elif log_var is not None and isinstance(
+                            criterion, BetaNLLLoss
+                        ):
+                            h_loss = criterion(output, target, log_var)
                         else:
                             h_loss = criterion(output, target)
                         loss = loss + weights[h] * h_loss
@@ -625,6 +682,35 @@ class WaveletGPT(BaseModel):
         if self._task == TASK_RETURN_REGRESSION:
             return output.squeeze(-1).cpu().numpy()
         return torch.softmax(output, dim=-1).cpu().numpy()
+
+    def predict_variance(self, X: NDArray) -> NDArray:
+        """Return per-sample variance from the variance head (exp(log_var))."""
+        if self._net is None:
+            raise ModelNotTrainedError("Model has not been trained")
+        if not getattr(self._net, "variance_head", False):
+            raise ValueError("Model does not have a variance head")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
+        ctx_dtype = (
+            torch.float32 if self._input_mode == INPUT_CONTINUOUS else torch.long
+        )
+        self._net.eval()
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
+            ctx, lvl, ac, aux = self._parse_x(X)
+            aux_t = None
+            if aux is not None:
+                aux_t = torch.tensor(aux, dtype=torch.float32).to(self._device)
+            logits_dict = self._net(
+                torch.tensor(ctx, dtype=ctx_dtype).to(self._device),
+                torch.tensor(lvl, dtype=torch.long).to(self._device),
+                torch.tensor(ac, dtype=torch.long).to(self._device),
+                aux_features=aux_t,
+            )
+        log_var = logits_dict["log_var"].squeeze(-1)
+        return torch.exp(log_var).cpu().numpy()
 
     def predict_all_horizons(self, X: NDArray) -> dict[int, NDArray]:
         """Return predictions for all horizons."""
