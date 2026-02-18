@@ -28,6 +28,137 @@ INPUT_CONTINUOUS = "continuous"
 _VALID_INPUT_MODES = {INPUT_TOKENIZED, INPUT_CONTINUOUS}
 
 
+class HeteroscedasticLoss(nn.Module):
+    """Faithful heteroscedastic loss (Stirn et al. AISTATS 2023).
+
+    L = exp(-log_var) * CE_per_sample + log_var
+    """
+
+    def __init__(self, label_smoothing: float = 0.0) -> None:
+        super().__init__()
+        self.label_smoothing = label_smoothing
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        log_var: torch.Tensor,
+    ) -> torch.Tensor:
+        ce_per_sample = nn.functional.cross_entropy(
+            logits, targets, reduction="none",
+            label_smoothing=self.label_smoothing,
+        )
+        log_var_sq = log_var.squeeze(-1)
+        loss = torch.exp(-log_var_sq) * ce_per_sample + log_var_sq
+        return loss.mean()
+
+
+class ErrorRegularizedHeteroscedasticLoss(nn.Module):
+    """Heteroscedastic loss + error regularization penalty.
+
+    L = heteroscedastic_loss + lambda * |max_softmax - is_correct|
+    """
+
+    def __init__(
+        self, lam: float = 0.1, label_smoothing: float = 0.0,
+    ) -> None:
+        super().__init__()
+        self.lam = lam
+        self.label_smoothing = label_smoothing
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        log_var: torch.Tensor,
+    ) -> torch.Tensor:
+        ce_per_sample = nn.functional.cross_entropy(
+            logits, targets, reduction="none",
+            label_smoothing=self.label_smoothing,
+        )
+        log_var_sq = log_var.squeeze(-1)
+        hetero = (torch.exp(-log_var_sq) * ce_per_sample + log_var_sq).mean()
+
+        # Error regularization: penalize confident-and-wrong
+        probs = torch.softmax(logits, dim=-1)
+        max_conf = probs.max(dim=-1).values
+        is_correct = (logits.argmax(dim=-1) == targets).float()
+        penalty = torch.abs(max_conf - is_correct).mean()
+
+        return hetero + self.lam * penalty
+
+
+class SelectiveNetLoss(nn.Module):
+    """SelectiveNet loss (Geifman & El-Yaniv, ICML 2019).
+
+    L = CE / coverage + lambda * max(0, target_coverage - coverage)^2
+    """
+
+    def __init__(self, target_coverage: float = 0.7, lam: float = 32.0) -> None:
+        super().__init__()
+        self.target_coverage = target_coverage
+        self.lam = lam
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        reject_scores: torch.Tensor,
+    ) -> torch.Tensor:
+        coverage = reject_scores.mean()
+        coverage = torch.clamp(coverage, min=0.01)
+
+        ce = nn.functional.cross_entropy(logits, targets, reduction="none")
+        selective_risk = (ce * reject_scores).sum() / (coverage * len(targets))
+
+        penalty = self.lam * torch.clamp(
+            self.target_coverage - coverage, min=0.0,
+        ) ** 2
+
+        return selective_risk + penalty
+
+
+class HeteroscedasticSelectiveNetLoss(nn.Module):
+    """Combined heteroscedastic + SelectiveNet loss.
+
+    The heteroscedastic component trains the classifier + variance head.
+    The SelectiveNet component trains the rejection head.
+    """
+
+    def __init__(
+        self, target_coverage: float = 0.7, lam: float = 32.0,
+    ) -> None:
+        super().__init__()
+        self.target_coverage = target_coverage
+        self.lam = lam
+
+    def forward(
+        self,
+        logits: torch.Tensor,
+        targets: torch.Tensor,
+        log_var: torch.Tensor,
+        reject_scores: torch.Tensor,
+    ) -> torch.Tensor:
+        # Heteroscedastic component
+        ce_per_sample = nn.functional.cross_entropy(
+            logits, targets, reduction="none",
+        )
+        log_var_sq = log_var.squeeze(-1)
+        hetero = (torch.exp(-log_var_sq) * ce_per_sample + log_var_sq).mean()
+
+        # SelectiveNet component (uses same CE, weighted by rejection scores)
+        coverage = reject_scores.mean()
+        coverage = torch.clamp(coverage, min=0.01)
+        selective_risk = (ce_per_sample * reject_scores).sum() / (
+            coverage * len(targets)
+        )
+        penalty = self.lam * torch.clamp(
+            self.target_coverage - coverage, min=0.0,
+        ) ** 2
+
+        return hetero + selective_risk + penalty
+
+
 class WaveletGPTNet(nn.Module):
     """Causal transformer for predicting next SAX word.
 
@@ -59,6 +190,8 @@ class WaveletGPTNet(nn.Module):
         n_output_classes: int | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        variance_head: bool = False,
+        reject_head: bool = False,
     ) -> None:
         super().__init__()
         self.context_length = context_length
@@ -67,6 +200,8 @@ class WaveletGPTNet(nn.Module):
         self.task = task
         self.input_mode = input_mode
         self.n_aux_features = n_aux_features
+        self.variance_head = variance_head
+        self.reject_head = reject_head
 
         # Input projection: token embedding or continuous linear
         if input_mode == INPUT_CONTINUOUS:
@@ -121,6 +256,19 @@ class WaveletGPTNet(nn.Module):
                 head.weight = self.token_embed.weight  # Weight tying
             self.heads[str(h)] = head
 
+        if variance_head:
+            self.log_var_head = nn.Linear(embed_dim, 1)
+            # Stirn init: start uncertain (high variance)
+            nn.init.constant_(self.log_var_head.bias, 2.0)
+
+        if reject_head:
+            self.rejection = nn.Sequential(
+                nn.Linear(embed_dim, embed_dim // 2),
+                nn.ReLU(),
+                nn.Linear(embed_dim // 2, 1),
+                nn.Sigmoid(),
+            )
+
     def forward(
         self,
         token_ids: torch.Tensor,  # (batch, context_length) — int64 or float32
@@ -161,9 +309,15 @@ class WaveletGPTNet(nn.Module):
         # Last position's hidden state for all heads
         last_hidden = x[:, -1, :]  # (batch, embed_dim)
 
-        logits_dict: dict[int, torch.Tensor] = {}
+        logits_dict: dict[int | str, torch.Tensor] = {}
         for h in self.prediction_horizons:
             logits_dict[h] = self.heads[str(h)](last_hidden)  # (batch, output_dim)
+
+        if self.variance_head:
+            logits_dict["log_var"] = self.log_var_head(last_hidden)
+
+        if self.reject_head:
+            logits_dict["reject"] = self.rejection(last_hidden).squeeze(-1)
 
         return logits_dict
 
@@ -203,6 +357,8 @@ class WaveletGPT(BaseModel):
         class_weights: list[float] | None = None,
         input_mode: str = INPUT_TOKENIZED,
         n_aux_features: int = 0,
+        loss_type: str = "ce",
+        loss_kwargs: dict | None = None,
     ) -> None:
         if task not in _VALID_TASKS:
             raise ValueError(
@@ -216,6 +372,8 @@ class WaveletGPT(BaseModel):
         self._task = task
         self._input_mode = input_mode
         self._n_aux_features = n_aux_features
+        self._loss_type = loss_type
+        self._loss_kwargs = loss_kwargs or {}
         self._n_output_classes = n_output_classes
         self._class_weights = class_weights
         self._prediction_horizons = prediction_horizons or [1]
@@ -320,7 +478,25 @@ class WaveletGPT(BaseModel):
         """Build the appropriate loss function for the task."""
         if self._task == TASK_RETURN_REGRESSION:
             return nn.MSELoss()
-        # Classification: CrossEntropy
+
+        # Custom loss types
+        if self._loss_type == "heteroscedastic":
+            ls = self._loss_kwargs.get("label_smoothing", 0.0)
+            return HeteroscedasticLoss(label_smoothing=ls)
+        if self._loss_type == "heteroscedastic_error_reg":
+            ls = self._loss_kwargs.get("label_smoothing", 0.0)
+            lam = self._loss_kwargs.get("lam", 0.1)
+            return ErrorRegularizedHeteroscedasticLoss(lam=lam, label_smoothing=ls)
+        if self._loss_type == "selectivenet":
+            tc = self._loss_kwargs.get("target_coverage", 0.7)
+            lam = self._loss_kwargs.get("lam", 32.0)
+            return SelectiveNetLoss(target_coverage=tc, lam=lam)
+        if self._loss_type == "heteroscedastic_selectivenet":
+            tc = self._loss_kwargs.get("target_coverage", 0.7)
+            lam = self._loss_kwargs.get("lam", 32.0)
+            return HeteroscedasticSelectiveNetLoss(target_coverage=tc, lam=lam)
+
+        # Standard CE
         if self._class_weights is not None:
             weight = torch.tensor(self._class_weights, dtype=torch.float32).to(
                 self._device
@@ -345,6 +521,15 @@ class WaveletGPT(BaseModel):
         if self._device.type != "cuda":
             amp_enabled = False
 
+        # Determine heads needed from loss type
+        use_variance = self._loss_type in (
+            "heteroscedastic", "heteroscedastic_error_reg",
+            "heteroscedastic_selectivenet",
+        )
+        use_reject = self._loss_type in (
+            "selectivenet", "heteroscedastic_selectivenet",
+        )
+
         # Build network
         self._net = WaveletGPTNet(
             vocab_size=self._config["vocab_size"],
@@ -360,6 +545,8 @@ class WaveletGPT(BaseModel):
             n_output_classes=self._n_output_classes,
             input_mode=self._input_mode,
             n_aux_features=self._n_aux_features,
+            variance_head=use_variance,
+            reject_head=use_reject,
         ).to(self._device)
 
         optimizer = torch.optim.AdamW(
@@ -457,13 +644,29 @@ class WaveletGPT(BaseModel):
                 ):
                     logits_dict = self._net(ctx_b, lvl_b, ac_b, aux_features=aux_b)
 
+                    log_var = logits_dict.get("log_var")
+                    reject_scores = logits_dict.get("reject")
+
                     loss = torch.tensor(0.0, device=self._device)
                     for i, h in enumerate(self._prediction_horizons):
                         output = logits_dict[h]
                         target = target_bs[i]
                         if is_regression:
-                            # Squeeze output from (batch, 1) to (batch,)
                             h_loss = criterion(output.squeeze(-1), target)
+                        elif isinstance(
+                            criterion, HeteroscedasticSelectiveNetLoss,
+                        ):
+                            h_loss = criterion(
+                                output, target, log_var, reject_scores,
+                            )
+                        elif isinstance(
+                            criterion,
+                            (HeteroscedasticLoss,
+                             ErrorRegularizedHeteroscedasticLoss),
+                        ):
+                            h_loss = criterion(output, target, log_var)
+                        elif isinstance(criterion, SelectiveNetLoss):
+                            h_loss = criterion(output, target, reject_scores)
                         else:
                             h_loss = criterion(output, target)
                         loss = loss + weights[h] * h_loss
@@ -690,6 +893,63 @@ class WaveletGPT(BaseModel):
             for h, logits in logits_dict.items()
         }
 
+    def predict_variance(self, X: NDArray) -> NDArray:
+        """Return per-sample variance from the variance head (exp(log_var))."""
+        if self._net is None:
+            raise ModelNotTrainedError("Model has not been trained")
+        if not getattr(self._net, "variance_head", False):
+            raise ValueError("Model does not have a variance head")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
+        ctx_dtype = (
+            torch.float32 if self._input_mode == INPUT_CONTINUOUS else torch.long
+        )
+        self._net.eval()
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
+            ctx, lvl, ac, aux = self._parse_x(X)
+            aux_t = None
+            if aux is not None:
+                aux_t = torch.tensor(aux, dtype=torch.float32).to(self._device)
+            logits_dict = self._net(
+                torch.tensor(ctx, dtype=ctx_dtype).to(self._device),
+                torch.tensor(lvl, dtype=torch.long).to(self._device),
+                torch.tensor(ac, dtype=torch.long).to(self._device),
+                aux_features=aux_t,
+            )
+        log_var = logits_dict["log_var"].squeeze(-1)
+        return torch.exp(log_var).cpu().numpy()
+
+    def predict_rejection(self, X: NDArray) -> NDArray:
+        """Return per-sample rejection scores from the rejection head."""
+        if self._net is None:
+            raise ModelNotTrainedError("Model has not been trained")
+        if not getattr(self._net, "reject_head", False):
+            raise ValueError("Model does not have a rejection head")
+        amp_enabled = self._use_amp and self._device.type == "cuda"
+        ctx_dtype = (
+            torch.float32 if self._input_mode == INPUT_CONTINUOUS else torch.long
+        )
+        self._net.eval()
+        with torch.no_grad(), torch.autocast(
+            device_type=self._device.type,
+            dtype=torch.float16,
+            enabled=amp_enabled,
+        ):
+            ctx, lvl, ac, aux = self._parse_x(X)
+            aux_t = None
+            if aux is not None:
+                aux_t = torch.tensor(aux, dtype=torch.float32).to(self._device)
+            logits_dict = self._net(
+                torch.tensor(ctx, dtype=ctx_dtype).to(self._device),
+                torch.tensor(lvl, dtype=torch.long).to(self._device),
+                torch.tensor(ac, dtype=torch.long).to(self._device),
+                aux_features=aux_t,
+            )
+        return logits_dict["reject"].cpu().numpy()
+
     def save(self, path: Path) -> None:
         if self._net is None:
             raise ModelNotTrainedError("Cannot save untrained model")
@@ -745,6 +1005,14 @@ class WaveletGPT(BaseModel):
             input_mode=input_mode,
             n_aux_features=n_aux_features,
         )
+        loss_type = config.get("loss_type", "ce")
+        variance_head = loss_type in (
+            "heteroscedastic", "heteroscedastic_error_reg",
+            "heteroscedastic_selectivenet",
+        )
+        reject_head_flag = loss_type in (
+            "selectivenet", "heteroscedastic_selectivenet",
+        )
         instance._net = WaveletGPTNet(
             **net_params,
             prediction_horizons=prediction_horizons,
@@ -752,6 +1020,8 @@ class WaveletGPT(BaseModel):
             n_output_classes=n_output_classes,
             input_mode=input_mode,
             n_aux_features=n_aux_features,
+            variance_head=variance_head,
+            reject_head=reject_head_flag,
         ).to(instance._device)
         state = torch.load(
             path / "model.pt", map_location="cpu", weights_only=True
