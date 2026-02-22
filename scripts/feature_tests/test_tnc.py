@@ -50,7 +50,7 @@ EMBED_DIM = MODEL_KWARGS["embed_dim"]
 NET_KWARGS = {k: MODEL_KWARGS[k] for k in ("embed_dim", "num_heads", "num_layers", "dropout")}
 REPR_DIM = 32
 NEIGHBORHOOD_W = 32
-TNC_EPOCHS = 30
+TNC_EPOCHS = 20
 FINETUNE_EPOCHS = 20
 TEMPERATURE = 0.5
 
