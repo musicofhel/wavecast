@@ -254,8 +254,6 @@ def main() -> None:
     pred_ce = model_ce.predict(X_test).astype(np.int64)
     ce_probs = model_ce.predict_proba(X_test)
     m_ce = evaluate_5_metrics(pred_ce, te_rets, y_test, te_valid)
-    ece_ce = compute_ece(ce_probs, y_test[te_valid]) if te_valid.sum() > 0 else 0.0
-    # Use only valid samples for ECE
     ece_ce = compute_ece(ce_probs[te_valid], y_test[te_valid])
     print_5_metrics("CE Baseline", m_ce, label=f"ECE={ece_ce:.4f}")
 
