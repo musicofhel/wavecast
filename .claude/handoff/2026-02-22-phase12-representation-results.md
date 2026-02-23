@@ -39,7 +39,7 @@ Phase 12 tests 10 fundamental changes to the D1 input representation:
 | crossscale | FAIL | 49.8% | 37.8% | 51.0% | 24.7% | -0.555 |
 | range_dwt | FAIL | 63.8% | 50.6% | 67.9% | 28.6% | +4.426 |
 | regression | INTERESTING | 62.7% | 67.0% | 66.8% | 6.7% | +4.544 |
-| transition_head | INTERESTING | 64.0% | 54.3% | 68.0% | 24.1% | +4.588 |
+| transition_head | INTERESTING | 64.0% | 54.3% | 68.0% | 24.1% | +4.589 |
 
 **Score: 0 PASS, 4 INTERESTING, 6 FAIL**
 
