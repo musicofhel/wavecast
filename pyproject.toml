@@ -76,6 +76,10 @@ ignore = [
     "TCH",    # type-checking imports (cosmetic, not worth the churn)
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"dashboard/pages/*.py" = ["N999", "E402"]  # Streamlit multipage: numeric-prefix filenames + sys.path before imports
+"dashboard/app.py" = ["E402"]  # sys.path must come before dashboard imports
+
 [tool.ruff.lint.isort]
 known-first-party = ["wavecast"]
 
