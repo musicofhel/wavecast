@@ -1,0 +1,22 @@
+{
+  "econ_dir": 0.636,
+  "flat_pct": 0.259,
+  "transition": 0.523,
+  "large_move": 0.675,
+  "sharpe_cost": 4.69,
+  "bolt_ceiling": 0.631,
+  "computed_date": "2026-02-22",
+  "n_seeds": 3,
+  "train_samples": 124000,
+  "test_samples": 37700,
+  "pass_thresholds": {
+    "min_econ_dir": 0.65,
+    "max_flat_pct": 0.40,
+    "min_transition": 0.523,
+    "min_large_move": 0.685,
+    "min_sharpe": 4.69,
+    "auto_fail_transition": 0.45,
+    "auto_fail_sharpe": 3.5,
+    "auto_fail_large_move": 0.65
+  }
+}
