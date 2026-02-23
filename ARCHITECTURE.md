@@ -216,6 +216,49 @@ Input: [token_ids (B, L), level_ids (B,), sector_ids (B,)]
 - May need: gradient checkpointing for larger universe
 - RTX 2060 SUPER 8GB handles 600K params comfortably; can scale to ~1M
 
+## Production Trading System (A2i)
+
+### D1 Representation Pipeline
+
+```
+hourly OHLCV → DWT(db4, level=1) → np.diff(detail_coefficients)
+    → [coeff_sign, magnitude_zscore, volatility_ratio, approx_direction]
+    → sliding windows (context_length=16) → WaveletGPT (continuous input mode)
+    → 5-class softmax → Signal B → magnitude filter → trade decision
+```
+
+Unlike the SAX pipeline (Pipeline 2), the D1 pipeline operates on continuous wavelet coefficient deltas rather than discrete tokens. This produces economically meaningful predictions (~64% directional accuracy vs ~46% from SAX tokens).
+
+### Magnitude Filter (Signal B)
+
+The key insight from 66 experiments: the model is significantly more accurate on large predicted moves.
+
+```
+Signal B = Σ(prob_i × |bin_midpoint_i|)   for i in [0..4]
+```
+
+Signal B is the expected absolute return from the softmax distribution. Predictions ranked in the top tercile by Signal B achieve ~5pp higher accuracy (68% vs 63%) and nearly 2x Sharpe ratio.
+
+The tercile thresholds are derived from training data predictions (stored in `ce_baseline_predictions.npz`), NOT from the current prediction batch.
+
+### Why A2i Over B2i
+
+The PnL simulation tested 8 configurations varying magnitude filter (all/large), reversal filter (yes/no), and position sizing (flat/magnitude-scaled):
+
+- **A2i** (all trades, large-move, flat sizing): Sharpe +8.40 on 2025, +10.40 on 2026 OOS
+- **B2i** (continuation only, large-move, flat sizing): Sharpe +8.02 on 2025, +9.81 on 2026 OOS
+
+B2i uses a reversal filter that achieved 78.9% accuracy on 2025 test data but collapsed to 63.8% on 2026 OOS — the reversal structure was overfit. A2i avoids this complexity with no performance cost.
+
+### Performance Summary
+
+| Period | Trades | Accuracy | Sharpe | Max Drawdown |
+|--------|--------|----------|--------|--------------|
+| 2025 Test | 12,451 | 63.2% | +8.40 | -18.3% |
+| 2026 OOS | 1,644 | 66.7% | +10.40 | -13.6% |
+
+Full specification: `docs/PRODUCTION_SYSTEM.md`
+
 ## File Organization Principles
 
 1. **One concept per file** — `paa.py`, `sax.py`, `bow.py` not `sax_utils.py`

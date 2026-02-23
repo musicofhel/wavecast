@@ -18,6 +18,11 @@ class ForwardPrediction:
     predicted_direction: int  # +1, -1, 0
     predicted_confidence: float
     predicted_token: int
+    # A2i production filter fields:
+    softmax_probs: list[float] | None = None  # 5 class probabilities
+    predicted_magnitude: float | None = None  # Signal B value
+    magnitude_tercile: str | None = None  # "large"/"medium"/"small"
+    a2i_trade: bool = False  # Would A2i take this trade?
     # Filled on resolution:
     actual_return: float | None = None
     actual_direction: int | None = None
@@ -36,6 +41,10 @@ class ForwardPrediction:
             "predicted_direction": self.predicted_direction,
             "predicted_confidence": self.predicted_confidence,
             "predicted_token": self.predicted_token,
+            "softmax_probs": self.softmax_probs,
+            "predicted_magnitude": self.predicted_magnitude,
+            "magnitude_tercile": self.magnitude_tercile,
+            "a2i_trade": self.a2i_trade,
             "actual_return": self.actual_return,
             "actual_direction": self.actual_direction,
             "correct": self.correct,
@@ -55,6 +64,10 @@ class ForwardPrediction:
             predicted_direction=data["predicted_direction"],
             predicted_confidence=data["predicted_confidence"],
             predicted_token=data["predicted_token"],
+            softmax_probs=data.get("softmax_probs"),
+            predicted_magnitude=data.get("predicted_magnitude"),
+            magnitude_tercile=data.get("magnitude_tercile"),
+            a2i_trade=data.get("a2i_trade", False),
             actual_return=data.get("actual_return"),
             actual_direction=data.get("actual_direction"),
             correct=data.get("correct"),
@@ -80,6 +93,12 @@ class ForwardTestSummary:
     win_rate: float = 0.0
     per_ticker: dict[str, dict[str, float]] = field(default_factory=dict)
     per_interval: dict[str, dict[str, float]] = field(default_factory=dict)
+    # A2i production filter metrics:
+    a2i_trades: int = 0
+    a2i_accuracy: float = 0.0
+    a2i_directional_accuracy: float = 0.0
+    a2i_cumulative_pnl: float = 0.0
+    a2i_win_rate: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -97,8 +116,13 @@ class ForwardTestSummary:
             "win_rate": self.win_rate,
             "per_ticker": self.per_ticker,
             "per_interval": self.per_interval,
+            "a2i_trades": self.a2i_trades,
+            "a2i_accuracy": self.a2i_accuracy,
+            "a2i_directional_accuracy": self.a2i_directional_accuracy,
+            "a2i_cumulative_pnl": self.a2i_cumulative_pnl,
+            "a2i_win_rate": self.a2i_win_rate,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> ForwardTestSummary:
-        return cls(**data)
+        return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})

@@ -87,6 +87,18 @@ WaveletGPT.predict_proba() → SignalGenerator → PositionSizer → SignalBackt
 - 16 risk metrics: Sharpe, Sortino, Calmar, max drawdown, profit factor, VaR, CVaR, win rate, avg win/loss ratio, expectancy, tail ratio, total/annualized return, volatility, num trades, avg trade return
 - Per-trade records with entry/exit timestamps, gross/net returns, cost breakdown
 
+### Production Trading System (A2i)
+```
+WaveletGPT.predict_proba() → compute_signal_b() → magnitude_filter(top_tercile) → flat_sizing → trade
+```
+- Model: d1_augmented_v1 (trained 2021-2025, embed_dim=64, 3 layers, context_length=16)
+- Trade filter: top tercile by predicted magnitude (Signal B = expected absolute return from softmax)
+- 2025 Test: 12,451 trades, 63.2% accuracy, Sharpe +8.40, expectancy +0.193%
+- 2026 OOS: 1,644 trades, 66.7% accuracy, Sharpe +10.40, expectancy +0.339%
+- Reversal filter tested and REJECTED (78.9% on 2025 collapsed to 63.8% on 2026)
+- 66 experiments across 5 rounds confirmed ~64% econ_dir ceiling — no further model research warranted
+- Full spec: `docs/PRODUCTION_SYSTEM.md`, results: `PHASE12_RESULTS.md`
+
 ### Pipeline 4: Forward Testing (Phase 7)
 ```
 fetch_latest_bars → resolve pending → DWT/SAX/tokenize → WaveletGPT.predict_proba() → SignalGenerator → log prediction

@@ -242,6 +242,33 @@ class ForwardTestTracker:
                     "cumulative_pnl": iv_pnl,
                 }
 
+        # A2i-filtered metrics
+        a2i_resolved = [p for p in resolved if p.a2i_trade]
+        a2i_trades = len(a2i_resolved)
+        a2i_accuracy = 0.0
+        a2i_dir_accuracy = 0.0
+        a2i_cum_pnl = 0.0
+        a2i_wr = 0.0
+
+        if a2i_resolved:
+            a2i_correct = sum(1 for p in a2i_resolved if p.correct)
+            a2i_accuracy = a2i_correct / len(a2i_resolved)
+
+            a2i_dir_preds = [p for p in a2i_resolved if p.actual_direction != 0]
+            if a2i_dir_preds:
+                a2i_dir_correct = sum(
+                    1 for p in a2i_dir_preds
+                    if p.predicted_direction == p.actual_direction
+                )
+                a2i_dir_accuracy = a2i_dir_correct / len(a2i_dir_preds)
+
+            a2i_pnl_values = np.array(
+                [p.actual_return * p.predicted_direction for p in a2i_resolved],
+                dtype=np.float64,
+            )
+            a2i_cum_pnl = float(np.sum(a2i_pnl_values))
+            a2i_wr = float(compute_win_rate(a2i_pnl_values))
+
         return ForwardTestSummary(
             test_name=self.test_name,
             start_time=start_time,
@@ -257,4 +284,9 @@ class ForwardTestTracker:
             win_rate=wr,
             per_ticker=per_ticker,
             per_interval=per_interval,
+            a2i_trades=a2i_trades,
+            a2i_accuracy=a2i_accuracy,
+            a2i_directional_accuracy=a2i_dir_accuracy,
+            a2i_cumulative_pnl=a2i_cum_pnl,
+            a2i_win_rate=a2i_wr,
         )

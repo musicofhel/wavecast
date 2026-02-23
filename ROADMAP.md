@@ -143,32 +143,55 @@ Forward testing framework for paper trading, plus comprehensive model audit reve
 
 **Root cause**: The model learns SAX token statistics, not price dynamics. SAX tokens don't encode price direction — they encode wavelet coefficient levels. High token accuracy is real but economically meaningless.
 
+### Phase 8: D1 Representation — Return Quantile Prediction (v0.8.0)
+Pivoted from SAX token prediction to direct return quantile classification. The Phase 7 audit proved SAX tokens encode coefficient levels, not price direction. D1 representation predicts 5-class return quantiles from wavelet coefficient deltas + 4 auxiliary features.
+
+- [x] D1 representation: DWT level-1 coefficient deltas + [coeff_sign, magnitude_zscore, volatility_ratio, approx_direction]
+- [x] 5-class return quantile targets (from quantile_boundaries.json)
+- [x] WaveletGPT with continuous input mode (no SAX tokenization)
+- [x] Economic directional accuracy: **~64%** (vs 46% from SAX pipeline)
+- [x] Transition accuracy: 55.2% (genuine, not flat-bias inflated)
+- [x] Large-move accuracy: **68.1%** — the tradeable edge
+- [x] Model trained on 2021-2025 hourly data, 20 US tickers
+
+### Phase 12: Representation Ceiling Confirmation (v0.12.0)
+10 representation change experiments tested whether the D1 ceiling could be broken. 66 total experiments across 5 rounds.
+
+- [x] fracdiff (FAIL), finegrain_7 (INTERESTING), finegrain_11 (INTERESTING)
+- [x] context_32 (FAIL), context_48 (FAIL), context_64 (OOM)
+- [x] crossscale (FAIL), range_dwt (FAIL)
+- [x] regression (INTERESTING — 67% transition, best transition detection)
+- [x] transition_head (INTERESTING — minimal effect)
+- [x] **Ceiling confirmed at ~64% econ_dir across 66 experiments**
+- [x] BOLT information-theoretic analysis: CE is near-optimal for this representation
+- [x] Full results: `PHASE12_RESULTS.md`
+
+### Production Deployment
+- [x] PnL simulation: 8-config comparison (A1i/A1ii/A2i/A2ii/B1i/B1ii/B2i/B2ii)
+- [x] **A2i wins**: large-move magnitude filter, flat sizing, Sharpe +8.40 on 2025 test
+- [x] 2026 OOS validation: 66.7% accuracy, Sharpe +10.40, expectancy +0.339% per trade
+- [x] Reversal filter invalidated on 2026 OOS (78.9% → 63.8%)
+- [x] Production system documented: `docs/PRODUCTION_SYSTEM.md`
+- [x] Forward test updated with A2i magnitude filter and dual-track metrics
+- [x] Forward test scheduler: `scripts/run_forward_test.sh`
+
 ## Current Focus
 
-**Phases 1-7 complete. The model audit (Phase 7) proved the current representation has no economic edge.** The critical path is fixing the target variable / representation before any production deployment. Do NOT optimize the current pipeline further — the SAX representation is the bottleneck, not the model architecture, position sizing, or signal generation.
+**Research phase complete.** 66 experiments across 5 rounds confirmed the D1 representation ceiling at ~64% economic directional accuracy. The A2i production system is validated on 2026 OOS data and running forward tests. No further model experiments are warranted on the current data.
 
 ## Future Phases
 
-### Phase 8: Representation Rethink (REQUIRED before production)
-The Phase 7 audit proved SAX tokens don't encode price direction. Options to explore:
-- [ ] **Directly predict signed returns** (regression head instead of token classification)
-- [ ] **Predict return quantiles** (classification on return buckets, not coefficient levels)
-- [ ] **SAX on returns series** instead of price/coefficient levels
-- [ ] **Predict direction of CHANGE** (delta between consecutive coefficients, not the level itself)
-- [ ] **Magnitude recovery**: separate magnitude prediction head or continuous targets alongside tokens
-- [ ] **Reconstruction-aware training loss**: penalize predictions that map to wrong economic direction
-- [ ] Re-run model audit after each change to validate economic edge
+### Phase 9: Forward Test Accumulation
+- [ ] Accumulate months of live A2i forward test data
+- [ ] Track prediction accuracy, Sharpe, and drawdown over time
+- [ ] Monitor for regime drift or performance degradation
+- [ ] Test EnCQR overlay (5-model ensemble disagreement) on top of A2i
 
-### Phase 9: Production (blocked on Phase 8 edge)
-- [ ] FastAPI service for real-time predictions
-- [ ] Streamlit dashboard for visualization and forward test monitoring
-- [ ] Scheduled retraining pipeline (periodic re-fit on new data)
-- [ ] Model versioning + A/B testing
-- [ ] Alert system for regime changes
-- [ ] Docker deployment
-- [ ] Sub-hourly intervals (15m, 5m)
-- [ ] Hierarchical model: hourly predictions inform sub-hourly context
-- [ ] Streaming mode: online vocabulary updates, incremental training
+### Phase 10: New Data Sources (only remaining research lever)
+- [ ] Multi-timeframe: combine hourly + daily signals
+- [ ] Cross-asset: use sector/market signals as context
+- [ ] Non-price data: order flow, options surfaces, sentiment
+- [ ] Sub-hourly intervals (15m, 5m) — untested
 
 ## Research Questions — Answered (Phase 3)
 
@@ -190,9 +213,9 @@ The Phase 7 audit proved SAX tokens don't encode price direction. Options to exp
 6. ~~**Multi-horizon utility**~~: **Answered by Phase 4**: h=1-2 useful for trading signals. h=4+ only useful for directional bias, not token-level prediction.
 7. ~~**Signal-to-PnL gap**~~: **Answered by Phase 7 audit**: SignalGenerator + SignalBacktest with transaction costs, position sizing (Kelly), and 16 risk metrics. **Result: negative Sharpe (-0.56). No tradeable edge.** The gap is in the representation (SAX tokens don't encode price direction), not in the signal/backtest pipeline.
 8. ~~**Forward test validation**~~: **Answered by Phase 7**: Forward testing framework built and working. First live run succeeded. But the model audit proved the underlying predictions have no economic edge (~46% directional accuracy).
-9. **Representation redesign**: Can predicting return quantiles, signed returns, or coefficient deltas instead of SAX levels produce an actual economic edge?
-10. **Sub-hourly resolution**: Does 15m/5m data improve h=1 signal quality, or does noise dominate?
-11. **Regime-adaptive sizing**: Should position sizing adjust based on detected market regime (trending vs mean-reverting)?
+9. ~~**Representation redesign**~~: **Answered by Phase 8 + Phase 12**: Yes — D1 return quantile prediction achieves ~64% economic directional accuracy (vs 46% from SAX). 66 experiments confirmed this as the ceiling for the current data.
+10. **Sub-hourly resolution**: Does 15m/5m data improve h=1 signal quality, or does noise dominate? (Untested — potential Phase 10)
+11. ~~**Regime-adaptive sizing**~~: **Answered by PnL simulation**: No — flat sizing (A2i) beats magnitude-based sizing (A2ii). Magnitude-based sizing increases max drawdown from -18.3% to -32.1% without improving Sharpe.
 
 ## Non-Goals (Explicit)
 

@@ -73,6 +73,11 @@ def main() -> None:
         print(f"  Accuracy: {summary.accuracy:.1%}")
         print(f"  Dir accuracy: {summary.directional_accuracy:.1%}")
         print(f"  Cumulative PnL: {summary.cumulative_pnl:+.4f}")
+        if summary.a2i_trades > 0:
+            print(f"  A2i trades: {summary.a2i_trades} ({summary.a2i_trades / summary.resolved_predictions:.0%} of resolved)")
+            print(f"  A2i accuracy: {summary.a2i_accuracy:.1%}")
+            print(f"  A2i dir accuracy: {summary.a2i_directional_accuracy:.1%}")
+            print(f"  A2i PnL: {summary.a2i_cumulative_pnl:+.4f}")
 
     if show_report:
         print("\n--- Per-ticker breakdown ---")

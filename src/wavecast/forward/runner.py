@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import uuid
 from pathlib import Path
@@ -57,6 +58,11 @@ _INTERVAL_DELTAS: dict[str, datetime.timedelta] = {
 }
 
 
+def compute_signal_b(probs: NDArray, bin_midpoints: NDArray) -> float:
+    """Expected absolute return from softmax distribution (magnitude signal)."""
+    return float(np.sum(probs * np.abs(bin_midpoints)))
+
+
 class ForwardTestRunner:
     """Orchestrates forward test cycles: fetch -> resolve -> predict -> log.
 
@@ -77,6 +83,8 @@ class ForwardTestRunner:
         self._model: WaveletGPT | None = None
         self._vocab: SAXVocabulary | None = None
         self._tracker: ForwardTestTracker | None = None
+        self._bin_midpoints: NDArray | None = None
+        self._mag_thresholds: tuple[float, float] | None = None  # (33rd, 67th)
 
     def run_once(self) -> ForwardTestSummary:
         """Run a single forward test cycle."""
@@ -143,6 +151,24 @@ class ForwardTestRunner:
                 predicted = model.predict(X_last)
                 proba = model.predict_proba(X_last)
 
+                # Compute A2i magnitude filter fields
+                magnitude = None
+                tercile = None
+                is_a2i_trade = False
+                softmax_list = None
+                if proba is not None and proba.ndim == 2 and proba.shape[1] >= 2:
+                    bin_midpoints, mag_thresholds = self._load_magnitude_config()
+                    if len(bin_midpoints) == proba.shape[1]:
+                        magnitude = compute_signal_b(proba[0], bin_midpoints)
+                        t33, t67 = mag_thresholds
+                        if magnitude >= t67:
+                            tercile = "large"
+                        elif magnitude >= t33:
+                            tercile = "medium"
+                        else:
+                            tercile = "small"
+                        softmax_list = proba[0].tolist()
+
                 for horizon in self.config.horizons:
                     # Generate signal based on model task
                     if is_return_task:
@@ -164,6 +190,9 @@ class ForwardTestRunner:
 
                     sig = signal_series.signals[0]
 
+                    # A2i trades: large magnitude + non-flat direction
+                    is_a2i_trade = tercile == "large" and sig.direction != 0
+
                     # Compute target timestamp
                     target_ts = self._compute_target_timestamp(
                         timestamps[-1], interval, horizon
@@ -179,16 +208,23 @@ class ForwardTestRunner:
                         predicted_direction=sig.direction,
                         predicted_confidence=sig.confidence,
                         predicted_token=sig.token_id,
+                        softmax_probs=softmax_list,
+                        predicted_magnitude=magnitude,
+                        magnitude_tercile=tercile,
+                        a2i_trade=is_a2i_trade,
                     )
 
                     tracker.log_prediction(pred)
                     logger.info(
-                        "Prediction: %s %s h=%d dir=%+d conf=%.3f",
+                        "Prediction: %s %s h=%d dir=%+d conf=%.3f mag=%.6f tercile=%s a2i=%s",
                         ticker,
                         interval,
                         horizon,
                         sig.direction,
                         sig.confidence,
+                        magnitude or 0.0,
+                        tercile or "n/a",
+                        is_a2i_trade,
                     )
 
         return tracker.get_summary()
@@ -434,3 +470,68 @@ class ForwardTestRunner:
                 )
 
         return {t: ticker_to_class.get(t, 0) for t in tickers}
+
+    def _load_magnitude_config(self) -> tuple[NDArray, tuple[float, float]]:
+        """Load bin midpoints and magnitude tercile thresholds.
+
+        Returns:
+            (bin_midpoints, (threshold_33, threshold_67))
+        """
+        if self._bin_midpoints is not None and self._mag_thresholds is not None:
+            return self._bin_midpoints, self._mag_thresholds
+
+        model_dir = Path(self.config.model_path)
+
+        # Try to load bin_midpoints from pnl_simulation.json metadata first
+        sim_path = Path.home() / ".wavecast" / "audit" / "production" / "pnl_simulation.json"
+        if sim_path.exists():
+            with open(sim_path) as f:
+                sim_data = json.load(f)
+            meta = sim_data.get("meta", {})
+            if "bin_midpoints" in meta:
+                self._bin_midpoints = np.array(meta["bin_midpoints"], dtype=np.float64)
+
+        # Fall back to computing from quantile_boundaries.json
+        if self._bin_midpoints is None:
+            boundaries_path = model_dir / "quantile_boundaries.json"
+            if boundaries_path.exists():
+                with open(boundaries_path) as f:
+                    boundaries_raw = json.load(f)
+                b = np.array(boundaries_raw.get("1", []), dtype=np.float64)
+                if len(b) == 4:
+                    self._bin_midpoints = np.array([
+                        b[0] - (b[1] - b[0]),
+                        (b[0] + b[1]) / 2,
+                        (b[1] + b[2]) / 2,
+                        (b[2] + b[3]) / 2,
+                        b[3] + (b[3] - b[2]),
+                    ])
+                else:
+                    logger.warning("Unexpected boundary length %d, using zeros", len(b))
+                    self._bin_midpoints = np.zeros(5)
+            else:
+                logger.warning("No quantile_boundaries.json found, magnitude filter disabled")
+                self._bin_midpoints = np.zeros(5)
+
+        # Load magnitude tercile thresholds from saved predictions
+        pred_path = Path.home() / ".wavecast" / "audit" / "production" / "ce_baseline_predictions.npz"
+        if pred_path.exists():
+            data = np.load(pred_path)
+            pred_proba = data.get("pred_proba")
+            if pred_proba is not None:
+                sig_b_all = pred_proba @ np.abs(self._bin_midpoints)
+                t33 = float(np.percentile(sig_b_all, 33.33))
+                t67 = float(np.percentile(sig_b_all, 66.67))
+                self._mag_thresholds = (t33, t67)
+                logger.info(
+                    "Loaded magnitude thresholds: 33rd=%.6f, 67th=%.6f",
+                    t33, t67,
+                )
+            else:
+                logger.warning("No pred_proba in predictions file, using default thresholds")
+                self._mag_thresholds = (0.0051, 0.0068)
+        else:
+            logger.warning("No saved predictions found, using default magnitude thresholds")
+            self._mag_thresholds = (0.0051, 0.0068)
+
+        return self._bin_midpoints, self._mag_thresholds

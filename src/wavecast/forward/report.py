@@ -37,6 +37,19 @@ def generate_forward_report(summary: ForwardTestSummary) -> str:
         lines.append(f"  Max Drawdown:   {summary.max_drawdown:.4f}")
         lines.append("")
 
+        if summary.a2i_trades > 0:
+            pct = summary.a2i_trades / summary.resolved_predictions * 100
+            lines.append("--- A2i Production Filter ---")
+            lines.append(
+                f"  A2i trades:          {summary.a2i_trades} / "
+                f"{summary.resolved_predictions} total ({pct:.0f}%)"
+            )
+            lines.append(f"  A2i Accuracy:        {summary.a2i_accuracy:.1%}")
+            lines.append(f"  A2i Dir. Accuracy:   {summary.a2i_directional_accuracy:.1%}")
+            lines.append(f"  A2i Win Rate:        {summary.a2i_win_rate:.1%}")
+            lines.append(f"  A2i Cumulative PnL:  {summary.a2i_cumulative_pnl:+.4f}")
+            lines.append("")
+
         if summary.per_ticker:
             lines.append("--- Per Ticker ---")
             lines.append(f"  {'Ticker':<10} {'Accuracy':>10} {'Dir.Acc':>10} {'PnL':>10}")
