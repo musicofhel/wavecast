@@ -1,0 +1,58 @@
+{
+  "model_kwargs": {
+    "embed_dim": 64,
+    "num_heads": 4,
+    "num_layers": 3,
+    "dropout": 0.1,
+    "epochs": 20,
+    "batch_size": 64,
+    "learning_rate": 0.0005,
+    "patience": 10
+  },
+  "tickers": [
+    "AAPL",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "NVDA",
+    "JPM",
+    "GS",
+    "BAC",
+    "XOM",
+    "CVX",
+    "COP",
+    "JNJ",
+    "UNH",
+    "PFE",
+    "SPY",
+    "QQQ",
+    "GLD",
+    "SLV",
+    "USO",
+    "UNG"
+  ],
+  "interval": "1h",
+  "train_end": "2025-12-31",
+  "detail_levels": [
+    1,
+    2,
+    5
+  ],
+  "context_length": 16,
+  "n_classes": 5,
+  "percentiles": [
+    10.0,
+    30.0,
+    70.0,
+    90.0
+  ],
+  "n_aux_features": 4,
+  "class_weights": [
+    1.5384290841630666,
+    0.7692553716012742,
+    0.38463108847131844,
+    0.7692553716012742,
+    1.5384290841630666
+  ],
+  "n_windows": 282861
+}

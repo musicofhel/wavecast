@@ -1,0 +1,6 @@
+{
+  "train_loss": 1.4909491536304422,
+  "train_time_seconds": 645.6306083202362,
+  "n_windows": 282861,
+  "n_valid_returns": 282597
+}

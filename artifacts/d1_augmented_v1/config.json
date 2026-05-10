@@ -1,0 +1,29 @@
+{
+  "vocab_size": 1,
+  "context_length": 16,
+  "embed_dim": 64,
+  "num_heads": 4,
+  "num_layers": 3,
+  "dropout": 0.1,
+  "n_levels": 6,
+  "n_asset_classes": 7,
+  "epochs": 20,
+  "batch_size": 64,
+  "learning_rate": 0.0005,
+  "patience": 10,
+  "prediction_horizons": [
+    1
+  ],
+  "use_amp": false,
+  "task": "return_quantile",
+  "input_mode": "continuous",
+  "n_aux_features": 4,
+  "n_output_classes": 5,
+  "class_weights": [
+    1.5384290841630666,
+    0.7692553716012742,
+    0.38463108847131844,
+    0.7692553716012742,
+    1.5384290841630666
+  ]
+}
