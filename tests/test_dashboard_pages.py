@@ -216,8 +216,20 @@ class TestDrilldownPage:
 
     def test_metric_cards(self, browser_page):
         _goto_page(browser_page, "Ticker Drilldown")
-        for label in ["Predictions", "A2i Trades"]:
+        for label in ["Accuracy", "Sharpe"]:
             expect(browser_page.get_by_text(label).first).to_be_visible()
+
+    def test_latest_forecast(self, browser_page):
+        _goto_page(browser_page, "Ticker Drilldown")
+        expect(
+            browser_page.get_by_text("Latest Forecast").first
+        ).to_be_visible()
+
+    def test_ranking_chart(self, browser_page):
+        _goto_page(browser_page, "Ticker Drilldown")
+        expect(
+            browser_page.get_by_text("Ranked by Sharpe").first
+        ).to_be_visible()
 
     def test_all_predictions_table(self, browser_page):
         _goto_page(browser_page, "Ticker Drilldown")

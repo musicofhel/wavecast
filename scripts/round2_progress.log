@@ -1,0 +1,1047 @@
+[2026-02-21 21:35:48] ==========================================
+[2026-02-21 21:35:48] Starting Round 2 remaining experiments (19 total)
+[2026-02-21 21:35:48] ==========================================
+[2026-02-21 21:35:48] START test_mdn_head (branch: exp2/mdn-head) [0/19]
+2026-02-21 21:35:52,166 INFO MDN head experiment: continuous return distribution via mixture density
+2026-02-21 21:35:53,000 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 21:35:53,253 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 21:40:18,510 INFO Training MDN model (K=3 components)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_mdn_head.py:155: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-21 21:41:30,394 INFO   MDN epoch 5/20  loss=-3.5990
+2026-02-21 21:42:42,118 INFO   MDN epoch 10/20  loss=-3.6770
+2026-02-21 21:43:54,663 INFO   MDN epoch 15/20  loss=-3.7295
+2026-02-21 21:45:06,511 INFO   MDN epoch 20/20  loss=-3.7443
+2026-02-21 21:45:06,512 INFO MDN training done in 288.0s (final loss=-3.7443)
+
+====================================================================================================
+  MDN Head (K=3)
+====================================================================================================
+  Econ Dir Accuracy:    60.6%  (28125 directional preds)
+  Prediction Dist:      up=40.8%  flat=0.0%  down=59.2%
+  Transition Accuracy:  65.0%  (19804 transitions)
+  Large-Move Accuracy:  65.4%  (12535 large moves)
+  Sharpe (with costs):  +4.005  (P100 vs random)
+  Quantile Accuracy:    24.3%
+  Class Dist:           c0=2.0%  c1=57.2%  c2=0.0%  c3=40.8%  c4=0.0%
+====================================================================================================
+
+====================================================================================================
+MDN vs CE Comparison
+====================================================================================================
+  CE  econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  MDN econ_dir=60.6%  transition=65.0%  large_move=65.4%  sharpe=+4.005
+  Delta: econ_dir=-3.0%  transition=+12.7%  large_move=-2.1%  sharpe=-0.687
+
+  CE flat%:  25.9%
+  MDN flat%: 0.0%
+  MDN successfully reduced flat predictions (by construction)
+
+  VERDICT: FAIL: econ_dir 60.6% < 63%; large_move 65.4% < 68%
+====================================================================================================
+2026-02-21 21:45:06,763 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/mdn_head_results.json
+[2026-02-21 21:45:08] DONE test_mdn_head in 560s
+[2026-02-21 21:45:08]   VERDICT: FAIL: econ_dir 60.6% < 63%; large_move 65.4% < 68%
+[2026-02-21 21:45:12] START test_empl_loss (branch: exp2/empl-loss) [1/19]
+2026-02-21 21:45:14,733 INFO EMPL loss experiment: ordinal-aware Earth Mover's distance
+2026-02-21 21:45:15,418 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 21:45:15,671 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 21:49:38,338 INFO Training with EMPL loss...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+2026-02-21 21:50:43,590 INFO   EMPL epoch 5/20  loss=0.7996
+2026-02-21 21:51:48,765 INFO   EMPL epoch 10/20  loss=0.7996
+2026-02-21 21:52:54,625 INFO   EMPL epoch 15/20  loss=0.7996
+2026-02-21 21:54:00,839 INFO   EMPL epoch 20/20  loss=0.7996
+
+====================================================================================================
+  EMPL Loss
+====================================================================================================
+  Econ Dir Accuracy:    50.0%  (0 directional preds)
+  Prediction Dist:      up=0.0%  flat=100.0%  down=0.0%
+  Transition Accuracy:  1.9%  (19804 transitions)
+  Large-Move Accuracy:  50.0%  (0 large moves)
+  Sharpe (with costs):  +0.000  (P53 vs random)
+  Quantile Accuracy:    41.5%
+  Class Dist:           c0=0.0%  c1=0.0%  c2=100.0%  c3=0.0%  c4=0.0%
+====================================================================================================
+
+====================================================================================================
+EMPL vs CE Comparison
+====================================================================================================
+  CE   econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  EMPL econ_dir=50.0%  transition=1.9%  large_move=50.0%  sharpe=+0.000
+  Delta: econ_dir=-13.6%  transition=-50.4%  large_move=-17.5%  sharpe=-4.692
+
+  Ordinal Error Analysis:
+    CE   mean_ord_err=1.108  adjacent_rate=55.7%  far_error_rate=44.3%
+    EMPL mean_ord_err=0.769  adjacent_rate=68.4%  far_error_rate=31.6%
+    EMPL reduced mean ordinal error by 0.338
+    EMPL reduced far-error rate by 12.7%
+
+  CE Confusion Matrix (rows=actual, cols=predicted):
+         c0  c1  c2  c3  c4
+    c0 1348   649   380   438   649
+    c1 1683  1627  1638  1349  1216
+    c2 1900  2494  5737  3256  2250
+    c3  936   955  1599  2085  1967
+    c4  433   335   401   837  1480
+
+  EMPL Confusion Matrix (rows=actual, cols=predicted):
+         c0  c1  c2  c3  c4
+    c0    0     0  3464     0     0
+    c1    0     0  7513     0     0
+    c2    0     0  15637     0     0
+    c3    0     0  7542     0     0
+    c4    0     0  3486     0     0
+
+  VERDICT: FAIL: FLAT BIAS: 100.0% flat (>40% threshold); econ_dir 50.0% < 63%; transition 1.9% < 52%; large_move 50.0% < 68%
+====================================================================================================
+2026-02-21 21:54:01,089 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/empl_loss_results.json
+[2026-02-21 21:54:01] DONE test_empl_loss in 529s
+[2026-02-21 21:54:01]   VERDICT: FAIL: FLAT BIAS: 100.0% flat (>40% threshold); econ_dir 50.0% < 63%; transition 1.9% < 52%; large_move 50.0% < 68%
+[2026-02-21 21:54:06] START test_bqn_crps (branch: exp2/bqn-crps) [2/19]
+2026-02-21 21:54:08,408 INFO BQN + CRPS experiment
+2026-02-21 21:54:09,088 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 21:54:09,301 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 21:58:34,178 INFO Training BQN + CRPS...
+/home/musicofhel/wavecast/scripts/feature_tests/test_bqn_crps.py:114: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-21 22:02:04,349 INFO   Epoch 5/20  loss=nan
+2026-02-21 22:05:33,960 INFO   Epoch 10/20  loss=nan
+2026-02-21 22:09:03,561 INFO   Epoch 15/20  loss=nan
+2026-02-21 22:12:32,393 INFO   Epoch 20/20  loss=nan
+
+====================================================================================================
+  BQN + CRPS
+====================================================================================================
+  Econ Dir Accuracy:    71.7%  (6445 directional preds)
+  Prediction Dist:      up=14.8%  flat=80.0%  down=5.2%
+  Transition Accuracy:  19.7%  (19804 transitions)
+  Large-Move Accuracy:  76.8%  (3826 large moves)
+  Sharpe (with costs):  +4.650  (P100 vs random)
+  Quantile Accuracy:    42.1%
+  Class Dist:           c0=0.1%  c1=5.1%  c2=80.0%  c3=14.1%  c4=0.7%
+====================================================================================================
+
+====================================================================================================
+COMPARISON: BQN+CRPS vs CE Baseline
+====================================================================================================
+  econ_dir               CE=63.6%  BQN=71.7%  delta=+0.0808
+  transition_acc         CE=52.3%  BQN=19.7%  delta=-0.3265
+  large_move_acc         CE=67.5%  BQN=76.8%  delta=+0.0926
+  sharpe_costs           CE=+4.692  BQN=+4.650  delta=-0.0417
+  BQN train loss: nan  time: 838.2s
+  CE  train time: 264.6s
+====================================================================================================
+2026-02-21 22:12:32,663 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/bqn_crps_results.json
+[2026-02-21 22:12:33] DONE test_bqn_crps in 1107s
+[2026-02-21 22:12:33]   VERDICT: ?
+[2026-02-21 22:12:38] START test_n3pom (branch: exp2/n3pom-ordinal) [3/19]
+2026-02-21 22:12:40,056 INFO N3POM ordinal regression experiment
+2026-02-21 22:12:40,748 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 22:12:40,962 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 22:17:03,294 INFO Training N3POM ordinal regression...
+/home/musicofhel/wavecast/scripts/feature_tests/test_n3pom.py:110: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-21 22:18:20,513 INFO   Epoch 5/20  loss=1.428337
+2026-02-21 22:19:39,081 INFO   Epoch 10/20  loss=1.425043
+2026-02-21 22:21:00,869 INFO   Epoch 15/20  loss=1.421957
+2026-02-21 22:22:19,070 INFO   Epoch 20/20  loss=1.418582
+
+====================================================================================================
+  N3POM Ordinal
+====================================================================================================
+  Econ Dir Accuracy:    74.0%  (3079 directional preds)
+  Prediction Dist:      up=5.1%  flat=90.6%  down=4.3%
+  Transition Accuracy:  10.9%  (19804 transitions)
+  Large-Move Accuracy:  78.5%  (2019 large moves)
+  Sharpe (with costs):  +3.542  (P100 vs random)
+  Quantile Accuracy:    42.2%
+  Class Dist:           c0=1.0%  c1=3.3%  c2=90.6%  c3=3.7%  c4=1.4%
+====================================================================================================
+
+====================================================================================================
+N3POM CLASS COLLAPSE CHECK
+====================================================================================================
+  Class 0: 1.0% <-- COLLAPSED
+  Class 1: 3.3% <-- COLLAPSED
+  Class 2: 90.6%
+  Class 3: 3.7% <-- COLLAPSED
+  Class 4: 1.4% <-- COLLAPSED
+  COLLAPSED: at least one class < 5%
+====================================================================================================
+
+====================================================================================================
+COMPARISON: N3POM vs CE Baseline
+====================================================================================================
+  econ_dir               CE=63.6%  N3POM=74.0%  delta=+0.1035
+  transition_acc         CE=52.3%  N3POM=10.9%  delta=-0.4146
+  large_move_acc         CE=67.5%  N3POM=78.5%  delta=+0.1097
+  sharpe_costs           CE=+4.692  N3POM=+3.542  delta=-1.1491
+  N3POM train loss: 1.418582  time: 315.7s
+  CE    train time: 262.1s
+====================================================================================================
+2026-02-21 22:22:19,321 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/n3pom_results.json
+[2026-02-21 22:22:19] DONE test_n3pom in 581s
+[2026-02-21 22:22:19]   VERDICT: ?
+[2026-02-21 22:22:24] START test_iqn (branch: exp2/iqn) [4/19]
+2026-02-21 22:22:26,849 INFO IQN experiment
+2026-02-21 22:22:27,537 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 22:22:27,756 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 22:26:53,017 INFO Training IQN (n_tau=8 per sample)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_iqn.py:140: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-21 22:28:04,721 INFO   Epoch 5/20  loss=nan
+2026-02-21 22:29:16,584 INFO   Epoch 10/20  loss=nan
+2026-02-21 22:30:28,178 INFO   Epoch 15/20  loss=nan
+2026-02-21 22:31:40,779 INFO   Epoch 20/20  loss=nan
+2026-02-21 22:31:40,779 INFO Evaluating at tau=[0.1, 0.25, 0.5, 0.75, 0.9]
+
+====================================================================================================
+  IQN
+====================================================================================================
+  Econ Dir Accuracy:    72.0%  (7255 directional preds)
+  Prediction Dist:      up=14.0%  flat=77.2%  down=8.9%
+  Transition Accuracy:  22.5%  (19804 transitions)
+  Large-Move Accuracy:  77.5%  (4231 large moves)
+  Sharpe (with costs):  +4.856  (P100 vs random)
+  Quantile Accuracy:    41.7%
+  Class Dist:           c0=0.1%  c1=8.8%  c2=77.2%  c3=13.8%  c4=0.2%
+====================================================================================================
+
+====================================================================================================
+IQN CALIBRATION CHECK
+====================================================================================================
+  50% interval [Q(0.25), Q(0.75)] coverage: 55.7% (ideal: 50%)
+  80% interval [Q(0.10), Q(0.90)] coverage: 81.5% (ideal: 80%)
+  50% interval mean width: 0.006425
+  80% interval mean width: 0.013990
+  CALIBRATED: both intervals within tolerance
+====================================================================================================
+
+====================================================================================================
+COMPARISON: IQN vs CE Baseline
+====================================================================================================
+  econ_dir               CE=63.6%  IQN=72.0%  delta=+0.0835
+  transition_acc         CE=52.3%  IQN=22.5%  delta=-0.2985
+  large_move_acc         CE=67.5%  IQN=77.5%  delta=+0.0994
+  sharpe_costs           CE=+4.692  IQN=+4.856  delta=+0.1643
+  IQN train loss: nan  time: 287.7s
+  CE  train time: 265.0s
+====================================================================================================
+2026-02-21 22:31:41,043 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/iqn_results.json
+[2026-02-21 22:31:41] DONE test_iqn in 557s
+[2026-02-21 22:31:41]   VERDICT: ?
+[2026-02-21 22:31:46] START test_bocpd (branch: exp2/bocpd-feature) [5/19]
+2026-02-21 22:31:48,600 INFO BOCPD feature test (2 features: run_length_mean, changepoint_prob)
+2026-02-21 22:31:48,670 INFO Loaded 20 tickers
+2026-02-21 22:31:48,670 INFO Building baseline dataset (4 aux features)...
+2026-02-21 22:31:49,302 INFO Building BOCPD challenger dataset (4 + 2 aux features)...
+2026-02-21 22:31:54,016 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 22:31:54,271 INFO Training CE baseline (4 aux)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline (4 aux)
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 22:36:19,845 INFO Training BOCPD challenger (4 + 2 aux)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  BOCPD Challenger (6 aux)
+====================================================================================================
+  Econ Dir Accuracy:    65.1%  (20409 directional preds)
+  Prediction Dist:      up=38.2%  flat=32.0%  down=29.8%
+  Transition Accuracy:  49.9%  (19804 transitions)
+  Large-Move Accuracy:  69.2%  (10098 large moves)
+  Sharpe (with costs):  +4.847  (P100 vs random)
+  Quantile Accuracy:    35.0%
+  Class Dist:           c0=16.3%  c1=13.4%  c2=32.0%  c3=24.4%  c4=13.8%
+====================================================================================================
+
+====================================================================================================
+  BOCPD FEATURE TEST COMPARISON
+====================================================================================================
+  Metric                   Baseline   Challenger      Delta
+  ------------------------------------------------------------------------------------------------
+  Econ Dir Acc               63.6%       65.1%     +1.4%
+  Transition Acc             52.3%       49.9%     -2.4%
+  Large-Move Acc             67.5%       69.2%     +1.7%
+  Sharpe (+costs)           +4.692      +4.847    +0.156
+  Quantile Acc               32.6%       35.0%     +2.4%
+  ------------------------------------------------------------------------------------------------
+  Pred Dist (base):  up=41.2%  flat=25.9%  down=32.8%
+  Pred Dist (chal):  up=38.2%  flat=32.0%  down=29.8%
+
+  Baseline train time:    265.3s
+  Challenger train time:  265.8s
+
+  VERDICT: FAIL: transition 49.9% < 52%
+====================================================================================================
+2026-02-21 22:40:45,910 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/bocpd_results.json
+[2026-02-21 22:40:46] DONE test_bocpd in 540s
+[2026-02-21 22:40:46]   VERDICT: FAIL: transition 49.9% < 52%
+[2026-02-21 22:40:51] START test_perm_entropy (branch: exp2/permutation-entropy) [6/19]
+2026-02-21 22:40:53,524 INFO Permutation entropy feature test (2 features: perm_entropy, perm_complexity)
+2026-02-21 22:40:53,589 INFO Loaded 20 tickers
+2026-02-21 22:40:53,589 INFO Building baseline dataset (4 aux features)...
+2026-02-21 22:40:54,207 INFO Building perm-entropy challenger dataset (4 + 2 aux features)...
+2026-02-21 22:41:01,265 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 22:41:01,530 INFO Training CE baseline (4 aux)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline (4 aux)
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 22:45:27,901 INFO Training perm-entropy challenger (4 + 2 aux)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  Perm-Entropy Challenger (6 aux)
+====================================================================================================
+  Econ Dir Accuracy:    64.8%  (20769 directional preds)
+  Prediction Dist:      up=38.9%  flat=30.6%  down=30.5%
+  Transition Accuracy:  51.0%  (19804 transitions)
+  Large-Move Accuracy:  68.8%  (10253 large moves)
+  Sharpe (with costs):  +4.691  (P100 vs random)
+  Quantile Accuracy:    34.5%
+  Class Dist:           c0=16.5%  c1=14.0%  c2=30.6%  c3=24.0%  c4=14.8%
+====================================================================================================
+
+====================================================================================================
+  PERMUTATION ENTROPY FEATURE TEST COMPARISON
+====================================================================================================
+  Metric                   Baseline   Challenger      Delta
+  ------------------------------------------------------------------------------------------------
+  Econ Dir Acc               63.6%       64.8%     +1.1%
+  Transition Acc             52.3%       51.0%     -1.3%
+  Large-Move Acc             67.5%       68.8%     +1.3%
+  Sharpe (+costs)           +4.692      +4.691    -0.000
+  Quantile Acc               32.6%       34.5%     +1.9%
+  ------------------------------------------------------------------------------------------------
+  Pred Dist (base):  up=41.2%  flat=25.9%  down=32.8%
+  Pred Dist (chal):  up=38.9%  flat=30.6%  down=30.5%
+
+  Baseline train time:    266.1s
+  Challenger train time:  264.2s
+
+  VERDICT: FAIL: transition 51.0% < 52%
+====================================================================================================
+2026-02-21 22:49:52,379 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/perm_entropy_results.json
+[2026-02-21 22:49:53] DONE test_perm_entropy in 542s
+[2026-02-21 22:49:53]   VERDICT: FAIL: transition 51.0% < 52%
+[2026-02-21 22:49:57] START test_focal_psi (branch: exp2/focal-psi-gamma) [7/19]
+2026-02-21 22:49:59,707 INFO Focal loss + psi-gamma calibration correction experiment
+2026-02-21 22:50:00,393 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 22:50:00,648 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/musicofhel/wavecast/scripts/feature_tests/test_focal_psi.py", line 338, in <module>
+    main()
+  File "/home/musicofhel/wavecast/scripts/feature_tests/test_focal_psi.py", line 257, in main
+    ece_ce = compute_ece(ce_probs, y_test[te_valid]) if te_valid.sum() > 0 else 0.0
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/musicofhel/wavecast/scripts/feature_tests/test_focal_psi.py", line 110, in compute_ece
+    correct = (predictions == labels).astype(np.float64)
+               ^^^^^^^^^^^^^^^^^^^^^
+ValueError: operands could not be broadcast together with shapes (37702,) (37642,) 
+[2026-02-21 22:54:24] FAIL test_focal_psi after 267s (exit=0)
+[2026-02-21 22:54:29] START test_arctan_pinball (branch: exp2/arctan-pinball) [8/19]
+2026-02-21 22:54:31,654 INFO Arctan pinball loss experiment
+2026-02-21 22:54:32,350 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 22:54:32,600 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 22:58:55,280 INFO Training arctan pinball quantile model (tau=[0.25, 0.5, 0.75], delta=0.010)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_arctan_pinball.py:125: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-21 23:00:00,698 INFO   epoch 5/20  loss=-5530.952888
+2026-02-21 23:01:07,049 INFO   epoch 10/20  loss=-21568.059924
+2026-02-21 23:02:14,133 INFO   epoch 15/20  loss=-46590.293858
+2026-02-21 23:03:20,274 INFO   epoch 20/20  loss=-79260.557383
+2026-02-21 23:03:20,274 INFO Quantile training done in 265.0s (final loss=-79260.557383)
+
+====================================================================================================
+  Arctan Pinball Quantile
+====================================================================================================
+  Econ Dir Accuracy:    52.4%  (28125 directional preds)
+  Prediction Dist:      up=100.0%  flat=0.0%  down=0.0%
+  Transition Accuracy:  49.2%  (19804 transitions)
+  Large-Move Accuracy:  50.8%  (12535 large moves)
+  Sharpe (with costs):  +0.623  (P100 vs random)
+  Quantile Accuracy:    20.0%
+  Class Dist:           c0=0.0%  c1=0.0%  c2=0.0%  c3=100.0%  c4=0.0%
+====================================================================================================
+
+====================================================================================================
+Arctan Pinball Loss Results
+====================================================================================================
+  CE  econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  APB econ_dir=52.4%  transition=49.2%  large_move=50.8%  sharpe=+0.623
+
+  Quantile spread: Q25=-41445.47656  Q50=41427.06250  Q75=41458.06250
+  Mean IQR: 82903.53125
+
+  VERDICT: FAIL: econ_dir 52.4% < 63%; transition 49.2% < 52%; large_move 50.8% < 68%
+====================================================================================================
+2026-02-21 23:03:20,525 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/arctan_pinball_results.json
+[2026-02-21 23:03:21] DONE test_arctan_pinball in 532s
+[2026-02-21 23:03:21]   VERDICT: FAIL: econ_dir 52.4% < 63%; transition 49.2% < 52%; large_move 50.8% < 68%
+[2026-02-21 23:03:26] START test_huber_quantile (branch: exp2/huber-quantile) [9/19]
+2026-02-21 23:03:27,932 INFO Huber quantile regression experiment (kappa=0.020)
+2026-02-21 23:03:28,613 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 23:03:28,888 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 23:07:49,229 INFO Training Huber quantile model (tau=[0.25, 0.5, 0.75], kappa=0.020)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_huber_quantile.py:143: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-21 23:08:57,118 INFO   epoch 5/20  loss=0.001730
+2026-02-21 23:10:04,339 INFO   epoch 10/20  loss=0.001644
+2026-02-21 23:11:12,774 INFO   epoch 15/20  loss=0.001612
+2026-02-21 23:12:20,959 INFO   epoch 20/20  loss=0.001598
+2026-02-21 23:12:20,959 INFO Huber quantile training done in 271.7s (final loss=0.001598)
+
+====================================================================================================
+  Huber Quantile Regression
+====================================================================================================
+  Econ Dir Accuracy:    65.9%  (17851 directional preds)
+  Prediction Dist:      up=50.1%  flat=38.3%  down=11.7%
+  Transition Accuracy:  46.5%  (19804 transitions)
+  Large-Move Accuracy:  69.8%  (8471 large moves)
+  Sharpe (with costs):  +4.563  (P100 vs random)
+  Quantile Accuracy:    33.1%
+  Class Dist:           c0=0.0%  c1=11.7%  c2=38.3%  c3=50.1%  c4=0.0%
+====================================================================================================
+
+====================================================================================================
+Huber Quantile Regression Results
+====================================================================================================
+  CE  econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  HQR econ_dir=65.9%  transition=46.5%  large_move=69.8%  sharpe=+4.563
+
+  Quantile spread: Q25=-0.00137  Q50=0.00104  Q75=0.00292
+  Mean IQR: 0.00429
+  Monotonic (Q25 <= Q50 <= Q75): 100.0%
+  Returns exceeding kappa (0.02): 2.4%
+
+  VERDICT: FAIL: transition 46.5% < 52%
+====================================================================================================
+2026-02-21 23:12:21,192 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/huber_quantile_results.json
+[2026-02-21 23:12:21] DONE test_huber_quantile in 535s
+[2026-02-21 23:12:21]   VERDICT: FAIL: transition 46.5% < 52%
+[2026-02-21 23:12:26] START test_curriculum (branch: exp2/curriculum-transition) [10/19]
+2026-02-21 23:12:28,683 INFO Curriculum learning by transition density
+2026-02-21 23:12:29,372 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 23:12:29,939 INFO Difficulty: mean=0.704, zero=0.1%, >0.5=90.5%
+2026-02-21 23:12:29,987 INFO Training CE baseline (random order)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 23:16:56,431 INFO Training curriculum model (easy->all->hard)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+2026-02-21 23:18:02,656 INFO   Curriculum epoch 5/20 [easy-only]  loss=1.4528
+2026-02-21 23:19:12,383 INFO   Curriculum epoch 10/20 [uniform]  loss=1.4631
+2026-02-21 23:20:19,890 INFO   Curriculum epoch 15/20 [hard-oversample]  loss=1.4537
+2026-02-21 23:21:30,259 INFO   Curriculum epoch 20/20 [hard-oversample]  loss=1.4397
+2026-02-21 23:21:30,262 INFO Curriculum training done in 273.8s (final loss=1.4397)
+
+====================================================================================================
+  Curriculum (easy->all->hard)
+====================================================================================================
+  Econ Dir Accuracy:    63.7%  (22303 directional preds)
+  Prediction Dist:      up=39.2%  flat=25.1%  down=35.7%
+  Transition Accuracy:  53.3%  (19804 transitions)
+  Large-Move Accuracy:  67.9%  (10806 large moves)
+  Sharpe (with costs):  +4.504  (P100 vs random)
+  Quantile Accuracy:    31.5%
+  Class Dist:           c0=20.1%  c1=15.6%  c2=25.1%  c3=18.0%  c4=21.2%
+====================================================================================================
+
+====================================================================================================
+Curriculum vs CE Comparison
+====================================================================================================
+  CE   econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  CUR  econ_dir=63.7%  transition=53.3%  large_move=67.9%  sharpe=+4.504
+  Delta: econ_dir=+0.0%  transition=+0.9%  large_move=+0.3%  sharpe=-0.188
+
+  CE flat%:         25.9%
+  Curriculum flat%: 25.1%
+
+  VERDICT: FAIL: large_move 67.9% < 68%
+====================================================================================================
+2026-02-21 23:21:30,507 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/curriculum_results.json
+[2026-02-21 23:21:31] DONE test_curriculum in 545s
+[2026-02-21 23:21:31]   VERDICT: FAIL: large_move 67.9% < 68%
+[2026-02-21 23:21:36] START test_ddat (branch: exp2/ddat-difficulty) [11/19]
+2026-02-21 23:21:38,090 INFO DDAT: Data-Driven Adaptive Training via autoencoder difficulty
+2026-02-21 23:21:38,821 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 23:21:39,074 INFO Phase 1: Training autoencoder on D1 features...
+2026-02-21 23:21:39,089 INFO AE input dim: 80
+2026-02-21 23:21:51,996 INFO   AE epoch 5/20  loss=0.125742
+2026-02-21 23:22:04,506 INFO   AE epoch 10/20  loss=0.104445
+2026-02-21 23:22:16,984 INFO   AE epoch 15/20  loss=0.087238
+2026-02-21 23:22:29,744 INFO   AE epoch 20/20  loss=0.081108
+2026-02-21 23:22:29,785 INFO AE done in 50.7s. Recon error: mean=0.080482 std=0.083037 max=3.778704
+2026-02-21 23:22:29,787 INFO Training CE baseline (uniform weights)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    64.7%  (19656 directional preds)
+  Prediction Dist:      up=33.7%  flat=35.0%  down=31.3%
+  Transition Accuracy:  48.1%  (19804 transitions)
+  Large-Move Accuracy:  68.8%  (9894 large moves)
+  Sharpe (with costs):  +4.730  (P100 vs random)
+  Quantile Accuracy:    36.1%
+  Class Dist:           c0=13.0%  c1=18.4%  c2=35.0%  c3=19.0%  c4=14.6%
+====================================================================================================
+2026-02-21 23:26:56,003 INFO Phase 2: Training DDAT model (alpha=1.0)...
+2026-02-21 23:28:05,620 INFO   DDAT epoch 5/20  loss=1.1589
+2026-02-21 23:29:18,054 INFO   DDAT epoch 10/20  loss=1.1496
+2026-02-21 23:30:23,666 INFO   DDAT epoch 15/20  loss=1.1422
+2026-02-21 23:31:31,452 INFO   DDAT epoch 20/20  loss=1.1335
+2026-02-21 23:31:31,455 INFO DDAT training done in 275.4s (final loss=1.1335)
+
+====================================================================================================
+  DDAT (alpha=1.0)
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22002 directional preds)
+  Prediction Dist:      up=40.4%  flat=26.4%  down=33.2%
+  Transition Accuracy:  52.4%  (19804 transitions)
+  Large-Move Accuracy:  67.4%  (10774 large moves)
+  Sharpe (with costs):  +4.640  (P100 vs random)
+  Quantile Accuracy:    32.7%
+  Class Dist:           c0=17.6%  c1=15.6%  c2=26.4%  c3=20.3%  c4=20.1%
+====================================================================================================
+
+====================================================================================================
+DDAT vs CE Comparison
+====================================================================================================
+  CE   econ_dir=64.7%  transition=48.1%  large_move=68.8%  sharpe=+4.730
+  DDAT econ_dir=63.6%  transition=52.4%  large_move=67.4%  sharpe=+4.640
+  Delta: econ_dir=-1.1%  transition=+4.3%  large_move=-1.4%  sharpe=-0.090
+
+  CE flat%:   35.0%
+  DDAT flat%: 26.4%
+
+  Sample weight stats:
+    mean=1.019  std=0.022  min=1.000  max=2.000
+
+  VERDICT: FAIL: large_move 67.4% < 68%
+====================================================================================================
+2026-02-21 23:31:31,704 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/ddat_results.json
+[2026-02-21 23:31:32] DONE test_ddat in 596s
+[2026-02-21 23:31:32]   VERDICT: FAIL: large_move 67.4% < 68%
+[2026-02-21 23:31:37] START test_tnc (branch: exp2/tnc-contrastive) [12/19]
+2026-02-21 23:31:39,734 INFO TNC experiment: contrastive pre-training with temporal neighborhood coding
+2026-02-21 23:31:40,662 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-21 23:31:40,930 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-21 23:36:28,045 INFO Training TNC encoder (Phase 1: contrastive, 30 epochs)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_tnc.py:101: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-21 23:44:22,811 INFO   TNC Phase 1 epoch 10/30  loss=0.8772
+2026-02-21 23:52:53,840 INFO   TNC Phase 1 epoch 20/30  loss=0.8663
+[2026-02-22 00:01:29] FAIL test_tnc after 1792s (exit=0)
+[2026-02-22 00:01:35] START test_cost (branch: exp2/cost-contrastive) [13/19]
+2026-02-22 00:01:37,461 INFO CoST experiment: frequency-domain contrastive learning
+2026-02-22 00:01:38,380 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-22 00:01:38,633 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-22 00:06:27,600 INFO Training CoST encoder (Phase 1: InfoNCE, 30 epochs, tau=0.10)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_cost.py:103: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-22 00:10:40,545 INFO   CoST Phase 1 epoch 10/30  loss=0.0179
+2026-02-22 00:14:51,414 INFO   CoST Phase 1 epoch 20/30  loss=0.0167
+2026-02-22 00:19:02,006 INFO   CoST Phase 1 epoch 30/30  loss=0.0162
+2026-02-22 00:19:02,007 INFO CoST Phase 1 done in 754.4s (final loss=0.0162)
+2026-02-22 00:19:02,007 INFO Training CoST classifier (Phase 2: linear probe, 20 epochs)...
+2026-02-22 00:19:31,906 INFO   CoST Phase 2 epoch 5/20  loss=1.5479
+2026-02-22 00:20:02,106 INFO   CoST Phase 2 epoch 10/20  loss=1.5478
+2026-02-22 00:20:33,446 INFO   CoST Phase 2 epoch 15/20  loss=1.5478
+2026-02-22 00:21:03,288 INFO   CoST Phase 2 epoch 20/20  loss=1.5478
+2026-02-22 00:21:03,292 INFO CoST Phase 2 done in 121.3s (final loss=1.5478)
+
+====================================================================================================
+  CoST (freq-domain contrastive + linear probe)
+====================================================================================================
+  Econ Dir Accuracy:    63.8%  (21375 directional preds)
+  Prediction Dist:      up=35.4%  flat=26.9%  down=37.6%
+  Transition Accuracy:  54.2%  (19804 transitions)
+  Large-Move Accuracy:  68.3%  (10157 large moves)
+  Sharpe (with costs):  +3.942  (P100 vs random)
+  Quantile Accuracy:    29.0%
+  Class Dist:           c0=23.9%  c1=13.8%  c2=26.9%  c3=11.8%  c4=23.6%
+====================================================================================================
+
+====================================================================================================
+CoST vs CE Comparison
+====================================================================================================
+  CE   econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  CoST econ_dir=63.8%  transition=54.2%  large_move=68.3%  sharpe=+3.942
+  Delta: econ_dir=+0.2%  transition=+1.8%  large_move=+0.7%  sharpe=-0.750
+
+  CE flat%:   25.9%
+  CoST flat%: 26.9%
+
+  Key targets: econ_dir  >= 65%: MISS
+               transition >= 55%: MISS
+
+  VERDICT: NO EFFECT
+====================================================================================================
+2026-02-22 00:21:03,558 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/cost_results.json
+[2026-02-22 00:21:04] DONE test_cost in 1169s
+[2026-02-22 00:21:04]   VERDICT: NO EFFECT
+[2026-02-22 00:21:09] START test_neural_wavelet (branch: exp2/neural-wavelet-layer) [14/19]
+2026-02-22 00:21:11,403 INFO Neural Wavelet experiment: learnable filter bank (filter_len=8, scales=3)
+2026-02-22 00:21:12,183 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-22 00:21:12,438 INFO Training CE baseline (fixed db4 wavelet)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline (fixed db4)
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-22 00:26:00,616 INFO Training Neural Wavelet model (end-to-end)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_neural_wavelet.py:166: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+/home/musicofhel/wavecast/scripts/feature_tests/test_neural_wavelet.py:105: UserWarning: Using padding='same' with even kernel lengths and odd dilation may require a zero-padded copy of the input be created (Triggered internally at /pytorch/aten/src/ATen/native/Convolution.cpp:1025.)
+  detail = f_nn.conv1d(a_in, g_k, padding="same").squeeze(1)  # (batch, seq_len)
+2026-02-22 00:27:30,562 INFO   NeuralWavelet epoch 5/20  loss=1.4785
+2026-02-22 00:28:58,161 INFO   NeuralWavelet epoch 10/20  loss=1.4677
+2026-02-22 00:30:23,546 INFO   NeuralWavelet epoch 15/20  loss=1.4584
+2026-02-22 00:31:47,063 INFO   NeuralWavelet epoch 20/20  loss=1.4496
+2026-02-22 00:31:47,063 INFO Neural Wavelet training done in 346.4s (final loss=1.4496)
+
+====================================================================================================
+  Neural Wavelet (learned filter bank)
+====================================================================================================
+  Econ Dir Accuracy:    64.1%  (21836 directional preds)
+  Prediction Dist:      up=37.7%  flat=26.8%  down=35.6%
+  Transition Accuracy:  52.9%  (19804 transitions)
+  Large-Move Accuracy:  68.4%  (10620 large moves)
+  Sharpe (with costs):  +4.636  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=22.2%  c1=13.3%  c2=26.8%  c3=21.4%  c4=16.3%
+====================================================================================================
+
+====================================================================================================
+Neural Wavelet vs CE Baseline (fixed db4)
+====================================================================================================
+  CE  econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  NW  econ_dir=64.1%  transition=52.9%  large_move=68.4%  sharpe=+4.636
+  Delta: econ_dir=+0.5%  transition=+0.6%  large_move=+0.9%  sharpe=-0.056
+
+  Learned low-pass filter (h): [0.1072 0.0645 0.1053 0.1204 0.1257 0.3521 0.0571 0.0676]
+  Learned high-pass filter (g): [ 0.0676 -0.0571  0.3521 -0.1257  0.1204 -0.1053  0.0645 -0.1072]
+
+  Key targets: econ_dir  >= 65%: MISS
+               transition >= 55%: MISS
+
+  VERDICT: NO EFFECT
+====================================================================================================
+2026-02-22 00:31:47,316 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/neural_wavelet_results.json
+[2026-02-22 00:31:48] DONE test_neural_wavelet in 639s
+[2026-02-22 00:31:48]   VERDICT: NO EFFECT
+[2026-02-22 00:31:53] START test_tft_vsn (branch: exp2/tft-variable-selection) [15/19]
+2026-02-22 00:31:55,244 INFO TFT VSN experiment: variable selection via Gated Residual Networks
+2026-02-22 00:31:56,036 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-22 00:31:56,291 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+
+====================================================================================================
+  CE Baseline
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (22072 directional preds)
+  Prediction Dist:      up=41.2%  flat=25.9%  down=32.8%
+  Transition Accuracy:  52.3%  (19804 transitions)
+  Large-Move Accuracy:  67.5%  (10795 large moves)
+  Sharpe (with costs):  +4.692  (P100 vs random)
+  Quantile Accuracy:    32.6%
+  Class Dist:           c0=16.7%  c1=16.1%  c2=25.9%  c3=21.2%  c4=20.1%
+====================================================================================================
+2026-02-22 00:36:31,688 INFO Training VSN model (n_variables=5, GRN hidden=32)...
+/home/musicofhel/wavecast/scripts/feature_tests/test_tft_vsn.py:211: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+2026-02-22 00:38:25,950 INFO   VSN epoch 5/20  loss=1.4795
+2026-02-22 00:40:30,980 INFO   VSN epoch 10/20  loss=1.4698
+2026-02-22 00:42:39,546 INFO   VSN epoch 15/20  loss=1.4621
+2026-02-22 00:44:45,939 INFO   VSN epoch 20/20  loss=1.4551
+2026-02-22 00:44:45,943 INFO VSN training done in 494.2s (final loss=1.4551)
+
+====================================================================================================
+  VSN (TFT-style variable selection)
+====================================================================================================
+  Econ Dir Accuracy:    63.6%  (19367 directional preds)
+  Prediction Dist:      up=39.2%  flat=36.2%  down=24.6%
+  Transition Accuracy:  45.9%  (19804 transitions)
+  Large-Move Accuracy:  67.1%  (9789 large moves)
+  Sharpe (with costs):  +4.352  (P100 vs random)
+  Quantile Accuracy:    34.6%
+  Class Dist:           c0=12.0%  c1=12.7%  c2=36.2%  c3=12.0%  c4=27.2%
+====================================================================================================
+
+====================================================================================================
+VSN vs CE Comparison
+====================================================================================================
+  CE  econ_dir=63.6%  transition=52.3%  large_move=67.5%  sharpe=+4.692
+  VSN econ_dir=63.6%  transition=45.9%  large_move=67.1%  sharpe=+4.352
+  Delta: econ_dir=-0.1%  transition=-6.4%  large_move=-0.4%  sharpe=-0.339
+
+  Learned Variable Importance (train mean):
+    1. aux_1 (zero-crossing rate)      0.562  ############################
+    2. aux_0 (energy ratio)            0.216  ##########
+    3. context (wavelet coeff)         0.097  ####
+    4. aux_3 (approx trend)            0.085  ####
+    5. aux_2 (local volatility)        0.041  ##
+
+  Learned Variable Importance (test mean):
+    1. aux_1 (zero-crossing rate)      0.550  ###########################
+    2. aux_0 (energy ratio)            0.216  ##########
+    3. context (wavelet coeff)         0.109  #####
+    4. aux_3 (approx trend)            0.089  ####
+    5. aux_2 (local volatility)        0.036  #
+
+  Top feature: aux_1 (zero-crossing rate) (direction-related: False)
+
+  Key targets: econ_dir  >= 65%: MISS
+               transition >= 55%: MISS
+
+  VERDICT: FAIL: transition 45.9% < 52%; large_move 67.1% < 68%
+====================================================================================================
+2026-02-22 00:44:46,360 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/tft_vsn_results.json
+[2026-02-22 00:44:47] DONE test_tft_vsn in 774s
+[2026-02-22 00:44:47]   VERDICT: FAIL: transition 45.9% < 52%; large_move 67.1% < 68%
+[2026-02-22 00:44:52] START test_ordinal_conformal (branch: exp2/ordinal-conformal) [16/19]
+2026-02-22 00:44:54,242 INFO Ordinal conformal prediction experiment
+2026-02-22 00:44:55,058 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-22 00:44:55,318 INFO Proper train: 99624, Calibration: 24906
+2026-02-22 00:44:55,361 INFO Training CE baseline on proper train split...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+2026-02-22 00:48:59,491 INFO Computing calibration nonconformity scores...
+2026-02-22 00:48:59,696 INFO Calibration scores: 24899 samples, mean=0.7378, std=0.1497
+
+====================================================================================================
+  CE Baseline (full test set)
+====================================================================================================
+  Econ Dir Accuracy:    64.3%  (20815 directional preds)
+  Prediction Dist:      up=34.0%  flat=30.6%  down=35.4%
+  Transition Accuracy:  50.6%  (19804 transitions)
+  Large-Move Accuracy:  68.9%  (10313 large moves)
+  Sharpe (with costs):  +4.759  (P100 vs random)
+  Quantile Accuracy:    32.5%
+  Class Dist:           c0=25.5%  c1=9.9%  c2=30.6%  c3=12.5%  c4=21.5%
+====================================================================================================
+
+====================================================================================================
+  ORDINAL CONFORMAL PREDICTION RESULTS
+====================================================================================================
+  Alpha     Threshold  Sel Econ Dir   Coverage   N Traded  Avg Set Size
+----------------------------------------------------------------------------------------------------
+  0.05         0.9124        64.3%     74.0%      20815          1.00
+  0.10         0.8910        64.3%     74.0%      20815          1.00
+  0.20         0.8562        64.3%     74.0%      20815          1.00
+----------------------------------------------------------------------------------------------------
+
+  Marginal coverages: a=0.05: 32.5%  a=0.10: 32.5%  a=0.20: 32.5%
+
+  Pass criteria (alpha=0.10): selective_econ_dir > 67%, coverage > 25%
+  Actual: selective_econ_dir = 64.3%, coverage = 74.0%
+
+  VERDICT: FAIL
+====================================================================================================
+2026-02-22 00:49:00,382 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/ordinal_conformal_results.json
+[2026-02-22 00:49:01] DONE test_ordinal_conformal in 249s
+[2026-02-22 00:49:01]   VERDICT: FAIL
+[2026-02-22 00:49:06] START test_eraps (branch: exp2/eraps-conformal) [17/19]
+2026-02-22 00:49:08,081 INFO ERAPS: Non-exchangeable conformal via AgACI
+2026-02-22 00:49:08,892 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-22 00:49:09,135 INFO Proper train: 99624, Calibration: 24906
+2026-02-22 00:49:09,178 INFO Training CE baseline...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+2026-02-22 00:52:46,102 INFO Computing calibration scores...
+2026-02-22 00:52:46,305 INFO Valid calibration scores: 24891, mean=0.7505
+
+====================================================================================================
+  CE Baseline (full test set)
+====================================================================================================
+  Econ Dir Accuracy:    64.2%  (20039 directional preds)
+  Prediction Dist:      up=35.9%  flat=33.4%  down=30.6%
+  Transition Accuracy:  48.4%  (19804 transitions)
+  Large-Move Accuracy:  68.5%  (10007 large moves)
+  Sharpe (with costs):  +4.553  (P100 vs random)
+  Quantile Accuracy:    34.3%
+  Class Dist:           c0=18.0%  c1=12.6%  c2=33.4%  c3=16.6%  c4=19.3%
+====================================================================================================
+2026-02-22 00:52:46,659 INFO Running standard conformal (alpha=0.10)...
+2026-02-22 00:52:46,856 INFO Running AgACI conformal (alpha=0.10, gamma=0.010, beta=0.010)...
+
+====================================================================================================
+  ERAPS: NON-EXCHANGEABLE CONFORMAL PREDICTION
+====================================================================================================
+  Method                 Marg Cov  Stab (<5pp)   Set Size   Sel Econ   Sel Cov   N Traded
+----------------------------------------------------------------------------------------------------
+  Standard                 34.3%          N/A       1.00     64.2%    71.2%      20039
+  AgACI                    34.3%       76.0%       1.00     64.2%    71.2%      20039
+----------------------------------------------------------------------------------------------------
+
+  AgACI alpha range: [0.0010, 0.0910]
+  AgACI final alpha: 0.0010
+
+  Pass criteria: marginal_coverage >= 88%, stability < 5pp, selective_econ_dir > 66%
+  Failed: marginal_coverage 34.3% < 88%; stability 76.0% >= 5pp; selective_econ_dir 64.2% <= 66%
+
+  VERDICT: FAIL
+====================================================================================================
+2026-02-22 00:53:35,561 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/eraps_results.json
+[2026-02-22 00:53:36] DONE test_eraps in 270s
+[2026-02-22 00:53:36]   VERDICT: FAIL
+[2026-02-22 00:53:41] START test_encqr (branch: exp2/encqr-bootstrap) [18/19]
+2026-02-22 00:53:43,244 INFO EnCQR: Bootstrap ensemble conformal prediction (B=5)
+2026-02-22 00:53:44,015 INFO Train: 124530 windows, Test: 37702 windows
+2026-02-22 00:53:44,252 INFO Bootstrap samples created: 5 models, 80% each
+2026-02-22 00:53:44,254 INFO OOB model counts per sample: mean=2.2, min=0, max=5
+2026-02-22 00:53:44,254 INFO Samples with at least 1 OOB model: 118184 / 124530 (94.9%)
+2026-02-22 00:53:44,297 INFO Training bootstrap model 1/5 (seed=42)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+2026-02-22 00:57:28,068 INFO   Model 1 trained in 223.7s
+2026-02-22 00:57:28,069 INFO Training bootstrap model 2/5 (seed=59)...
+/home/musicofhel/wavecast/src/wavecast/models/wavelet_gpt.py:94: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.transformer = nn.TransformerEncoder(
+2026-02-22 01:01:09,178 INFO   Model 2 trained in 221.1s
+2026-02-22 01:01:09,178 INFO Training bootstrap model 3/5 (seed=76)...
+2026-02-22 01:04:52,437 INFO   Model 3 trained in 223.2s
+2026-02-22 01:04:52,437 INFO Training bootstrap model 4/5 (seed=93)...
+2026-02-22 01:08:37,829 INFO   Model 4 trained in 225.3s
+2026-02-22 01:08:37,829 INFO Training bootstrap model 5/5 (seed=110)...
+2026-02-22 01:12:22,470 INFO   Model 5 trained in 224.6s
+2026-02-22 01:12:22,470 INFO Total training time: 1118.0s
+2026-02-22 01:12:22,471 INFO Computing OOB calibration scores...
+2026-02-22 01:13:02,650 INFO Valid OOB scores: 118127 (94.9% of training data)
+2026-02-22 01:13:02,650 INFO Computing ensemble test predictions...
+
+====================================================================================================
+  Ensemble (averaged softmax)
+====================================================================================================
+  Econ Dir Accuracy:    63.8%  (22109 directional preds)
+  Prediction Dist:      up=40.5%  flat=26.0%  down=33.6%
+  Transition Accuracy:  52.9%  (19804 transitions)
+  Large-Move Accuracy:  67.9%  (10811 large moves)
+  Sharpe (with costs):  +4.561  (P100 vs random)
+  Quantile Accuracy:    33.1%
+  Class Dist:           c0=17.3%  c1=16.3%  c2=26.0%  c3=23.7%  c4=16.8%
+====================================================================================================
+
+====================================================================================================
+  Ensemble (majority vote)
+====================================================================================================
+  Econ Dir Accuracy:    63.7%  (22212 directional preds)
+  Prediction Dist:      up=38.0%  flat=25.6%  down=36.4%
+  Transition Accuracy:  53.4%  (19804 transitions)
+  Large-Move Accuracy:  67.8%  (10806 large moves)
+  Sharpe (with costs):  +4.431  (P100 vs random)
+  Quantile Accuracy:    32.8%
+  Class Dist:           c0=19.6%  c1=16.8%  c2=25.6%  c3=22.7%  c4=15.3%
+====================================================================================================
+
+====================================================================================================
+  EnCQR: BOOTSTRAP ENSEMBLE SELECTIVE TRADING
+====================================================================================================
+  Max Spread    Sel Econ Dir   Coverage   N Traded  Pct Spread=0
+----------------------------------------------------------------------------------------------------
+  0                   69.2%     15.4%       4331        23.9%
+  1                   67.9%     44.6%      12549        61.2%
+  2                   66.5%     52.8%      14847        73.9%
+  3                   65.3%     62.3%      17514        84.5%
+----------------------------------------------------------------------------------------------------
+
+  Spread stats: mean=1.57, median=1.0, max=4
+    spread=0: 23.9%
+    spread=1: 37.2%
+    spread=2: 12.7%
+    spread=3: 10.6%
+    spread=4: 15.5%
+
+  Pass criteria: selective_econ_dir > 67% at coverage > 30%
+  Best: spread<=1, econ_dir=67.9%, coverage=44.6%
+
+  VERDICT: PASS
+====================================================================================================
+2026-02-22 01:13:04,511 INFO Results saved to /home/musicofhel/.wavecast/audit/feature_tests/encqr_results.json
+[2026-02-22 01:13:05] DONE test_encqr in 1164s
+[2026-02-22 01:13:05]   VERDICT: PASS
+[2026-02-22 01:13:10] ==========================================
+[2026-02-22 01:13:10] ALL DONE in 3h 37m
+[2026-02-22 01:13:10] Completed: 17, Failed: 2, Skipped: 0
+[2026-02-22 01:13:10] ==========================================

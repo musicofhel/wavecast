@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.config import (
+    AUDIT_DIR,
     BASELINE_LOCK,
     EXP3_DIR,
     FEATURE_TESTS_DIR,
@@ -222,6 +223,15 @@ def load_model_config() -> dict | None:
 def load_crosstab() -> dict | None:
     """Load cross-tab (magnitude x transition) results."""
     path = EXP3_DIR / "crosstab_results.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
+@st.cache_data
+def load_ticker_breakdown() -> dict | None:
+    """Load per-ticker backtest breakdown from D1 audit."""
+    path = AUDIT_DIR / "d1_ticker_breakdown.json"
     if not path.exists():
         return None
     return json.loads(path.read_text())

@@ -1,4 +1,4 @@
-"""Page 3: Per-ticker drilldown of forward test predictions."""
+"""Page 3: Per-ticker drilldown — backtest stats, forecast, prediction history, ranking."""
 
 from __future__ import annotations
 
@@ -13,80 +13,111 @@ import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from dashboard.config import COLORS, SECTOR_FOR_TICKER, TICKERS, fmt_pct, fmt_pnl  # noqa: E402
-from dashboard.data.loader import load_forward_predictions  # noqa: E402
+from dashboard.components.charts import softmax_bar_chart, ticker_ranking_bars  # noqa: E402
+from dashboard.config import COLORS, SECTOR_FOR_TICKER, TICKERS, fmt_pct, fmt_sharpe  # noqa: E402
+from dashboard.data.loader import (  # noqa: E402
+    load_forward_predictions,
+    load_pnl_simulation,
+    load_ticker_breakdown,
+)
 
 
 def render():
-    df = load_forward_predictions()
+    # --- Data loading ---
+    breakdown = load_ticker_breakdown()
+    fwd_df = load_forward_predictions()
+    pnl_sim = load_pnl_simulation()
 
-    if df is None or df.empty:
-        st.info("No forward test data yet.")
-        return
+    bin_midpoints = None
+    if pnl_sim and "meta" in pnl_sim:
+        bin_midpoints = pnl_sim["meta"].get("bin_midpoints")
 
+    # Build lookup: ticker name -> backtest dict
+    bt_lookup: dict[str, dict] = {}
+    bt_list: list[dict] = []
+    if breakdown and "per_ticker" in breakdown:
+        bt_list = breakdown["per_ticker"]
+        for t in bt_list:
+            bt_lookup[t["name"]] = t
+
+    # --- Ticker selector ---
     ticker = st.selectbox("Ticker", TICKERS, index=0)
     sector = SECTOR_FOR_TICKER.get(ticker, "unknown")
     st.caption(f"Sector: {sector}")
 
-    ticker_df = df[df["ticker"] == ticker].copy()
-    if ticker_df.empty:
-        st.warning(f"No predictions for {ticker}.")
-        return
+    # ── 2025 Backtest Performance ──
+    bt = bt_lookup.get(ticker)
+    if bt:
+        st.subheader("2025 Backtest Performance")
+        cols = st.columns(5)
+        with cols[0]:
+            st.metric("Accuracy", fmt_pct(bt.get("econ_dir_accuracy")))
+        with cols[1]:
+            st.metric("Sharpe (raw)", fmt_sharpe(bt.get("sharpe_raw")))
+        with cols[2]:
+            st.metric("Sharpe (costs)", fmt_sharpe(bt.get("sharpe_with_costs")))
+        with cols[3]:
+            st.metric("Transition", fmt_pct(bt.get("transition_accuracy")))
+        with cols[4]:
+            st.metric("N samples", f"{bt.get('n_valid', 0):,}")
 
-    resolved = ticker_df[ticker_df["resolved_at"].notna()]
-    a2i_resolved = resolved[resolved.get("a2i_trade", False) == True]  # noqa: E712
+    # ── Latest Forecast (softmax) ──
+    if fwd_df is not None and not fwd_df.empty:
+        ticker_fwd = fwd_df[fwd_df["ticker"] == ticker].copy()
+        if not ticker_fwd.empty:
+            # Find most recent prediction with softmax_probs
+            with_probs = ticker_fwd[ticker_fwd["softmax_probs"].apply(lambda x: x is not None)]
+            if not with_probs.empty and bin_midpoints is not None:
+                latest = with_probs.sort_values("timestamp", ascending=False).iloc[0]
+                probs = latest["softmax_probs"]
+                if isinstance(probs, list) and len(probs) == len(bin_midpoints):
+                    st.subheader("Latest Forecast")
+                    # Direction annotation
+                    argmax_idx = probs.index(max(probs))
+                    direction_label = _BIN_LABELS[argmax_idx]
+                    confidence = probs[argmax_idx]
+                    ts = latest.get("timestamp")
+                    ts_str = ts.strftime("%Y-%m-%d %H:%M") if pd.notna(ts) else ""
+                    st.caption(
+                        f"Prediction: **{direction_label}** ({confidence:.1%}) — {ts_str}"
+                    )
+                    fig = softmax_bar_chart(probs, bin_midpoints)
+                    st.plotly_chart(fig, use_container_width=True)
 
-    # Metric row
-    n_preds = len(ticker_df)
-    n_a2i = len(a2i_resolved)
+    # ── Prediction History (forward test) ──
+    if fwd_df is not None and not fwd_df.empty:
+        ticker_fwd = fwd_df[fwd_df["ticker"] == ticker].copy()
+        if not ticker_fwd.empty:
+            resolved = ticker_fwd[ticker_fwd["resolved_at"].notna()]
+            if len(resolved) > 1:
+                st.subheader("Prediction Timeline")
+                _render_timeline(resolved)
 
-    acc = None
-    if len(resolved) > 0 and "correct" in resolved.columns:
-        acc = resolved["correct"].sum() / len(resolved)
+            # Magnitude distribution
+            if "predicted_magnitude" in ticker_fwd.columns:
+                mags = ticker_fwd["predicted_magnitude"].dropna()
+                if len(mags) > 0:
+                    st.subheader("Magnitude Distribution")
+                    _render_magnitude_hist(ticker_fwd)
 
-    a2i_acc = None
-    if n_a2i > 0:
-        a2i_acc = a2i_resolved["correct"].sum() / n_a2i
+            # Full predictions table
+            st.subheader(f"All Predictions ({len(ticker_fwd)})")
+            _render_table(ticker_fwd.sort_values("timestamp", ascending=False))
 
-    cum_pnl = 0.0
-    dir_resolved = resolved[resolved["predicted_direction"] != 0]
-    if not dir_resolved.empty:
-        cum_pnl = (dir_resolved["predicted_direction"] * dir_resolved["actual_return"]).sum()
+    # ── All Tickers Ranked by Sharpe ──
+    if bt_list:
+        st.subheader("All Tickers Ranked by Sharpe")
+        fig = ticker_ranking_bars(bt_list, ticker)
+        st.plotly_chart(fig, use_container_width=True)
 
-    cols = st.columns(5)
-    with cols[0]:
-        st.metric("Predictions", n_preds)
-    with cols[1]:
-        st.metric("A2i Trades", n_a2i)
-    with cols[2]:
-        st.metric("Accuracy", fmt_pct(acc) if acc is not None else "\u2014")
-    with cols[3]:
-        st.metric("A2i Accuracy", fmt_pct(a2i_acc) if a2i_acc is not None else "\u2014")
-    with cols[4]:
-        st.metric("Cum PnL", fmt_pnl(cum_pnl))
 
-    # Prediction timeline scatter
-    if len(resolved) > 1:
-        st.subheader("Prediction Timeline")
-        _render_timeline(resolved)
-
-    # Magnitude distribution
-    if "predicted_magnitude" in ticker_df.columns:
-        mags = ticker_df["predicted_magnitude"].dropna()
-        if len(mags) > 0:
-            st.subheader("Magnitude Distribution")
-            _render_magnitude_hist(ticker_df)
-
-    # Full predictions table
-    st.subheader(f"All Predictions ({len(ticker_df)})")
-    _render_table(ticker_df.sort_values("timestamp", ascending=False))
+_BIN_LABELS = ["Strong Down", "Down", "Flat", "Up", "Strong Up"]
 
 
 def _render_timeline(resolved: pd.DataFrame):
     """Scatter: x=timestamp, y=actual_return, color=correct/wrong, size=magnitude."""
     resolved = resolved.sort_values("resolved_at").copy()
 
-    # Separate correct and wrong
     correct = resolved[resolved["correct"] == True]  # noqa: E712
     wrong = resolved[resolved["correct"] == False]  # noqa: E712
 
@@ -128,7 +159,7 @@ def _render_timeline(resolved: pd.DataFrame):
         yaxis_title="Actual Return",
         margin=dict(l=40, r=20, t=20, b=30),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_magnitude_hist(df: pd.DataFrame):
@@ -167,7 +198,7 @@ def _render_magnitude_hist(df: pd.DataFrame):
         xaxis_title="Predicted Magnitude (Signal B)",
         margin=dict(l=40, r=20, t=20, b=30),
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def _render_table(df: pd.DataFrame):
@@ -213,7 +244,7 @@ def _render_table(df: pd.DataFrame):
             "Return": ret_str,
         })
 
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 st.title("Ticker Drilldown")

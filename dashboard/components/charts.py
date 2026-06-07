@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import plotly.graph_objects as go
 
 from dashboard.config import COLORS
@@ -115,5 +117,88 @@ def bar_chart(
         height=height,
         template="plotly_dark",
         margin=dict(l=40, r=20, t=40, b=30),
+    )
+    return fig
+
+
+_BIN_LABELS = ["Strong Down", "Down", "Flat", "Up", "Strong Up"]
+_BIN_COLORS = ["#dc2626", "#f87171", "#94a3b8", "#4ade80", "#16a34a"]
+
+
+def softmax_bar_chart(
+    probs: Sequence[float],
+    bin_midpoints: Sequence[float],
+    title: str = "Softmax Forecast",
+    height: int = 300,
+) -> go.Figure:
+    """5-bar chart showing softmax probability distribution over return quantile bins."""
+    annotations = [f"{m * 100:+.2f}%" for m in bin_midpoints]
+    text_labels = [f"{p:.1%}" for p in probs]
+
+    fig = go.Figure(
+        go.Bar(
+            x=_BIN_LABELS,
+            y=list(probs),
+            marker_color=_BIN_COLORS,
+            text=text_labels,
+            textposition="outside",
+            hovertext=[f"{lbl}: {ann}" for lbl, ann in zip(_BIN_LABELS, annotations, strict=True)],
+            hoverinfo="text+y",
+        )
+    )
+
+    # Annotate bin midpoint returns below each bar
+    for i, ann in enumerate(annotations):
+        fig.add_annotation(
+            x=_BIN_LABELS[i],
+            y=-0.02,
+            text=ann,
+            showarrow=False,
+            font=dict(size=10, color="#94a3b8"),
+            yanchor="top",
+        )
+
+    fig.update_layout(
+        title=title,
+        yaxis=dict(title="Probability", range=[0, max(probs) * 1.3 + 0.05]),
+        height=height,
+        template="plotly_dark",
+        margin=dict(l=40, r=20, t=40, b=50),
+    )
+    return fig
+
+
+def ticker_ranking_bars(
+    ticker_data: list[dict],
+    selected_ticker: str,
+    metric_key: str = "sharpe_with_costs",
+    title: str = "All Tickers Ranked by Sharpe (with costs)",
+    height: int = 500,
+) -> go.Figure:
+    """Horizontal bar chart ranking all tickers by a metric. Selected ticker highlighted."""
+    sorted_data = sorted(ticker_data, key=lambda d: d.get(metric_key, 0))
+    names = [d["name"] for d in sorted_data]
+    values = [d.get(metric_key, 0) for d in sorted_data]
+    colors = [
+        COLORS["a2i"] if n == selected_ticker else COLORS["neutral"] for n in names
+    ]
+
+    fig = go.Figure(
+        go.Bar(
+            x=values,
+            y=names,
+            orientation="h",
+            marker_color=colors,
+            text=[f"{v:+.2f}" for v in values],
+            textposition="outside",
+        )
+    )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Sharpe (with costs)",
+        height=height,
+        template="plotly_dark",
+        margin=dict(l=60, r=40, t=40, b=30),
     )
     return fig

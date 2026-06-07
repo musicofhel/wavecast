@@ -1,5 +1,7 @@
 # WaveCast
 
+> **Status: ARCHIVED** — 66 experiments confirmed ~64% accuracy ceiling. No tradeable edge beyond the A2i production system (cron still runs). Research phase ended Feb 2026.
+
 Wavelet-shapelet financial forecasting library with SAX tokenization and transformer-based sequence prediction.
 
 ## Quick Start
