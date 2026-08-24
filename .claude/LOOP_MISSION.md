@@ -98,10 +98,13 @@ flat-bias detection (Round-2 criteria — see PHASE12_RESULTS.md), costs at
   Original: Per-ticker forward + backtest
   performance; does a top-K sub-universe chosen on train hold up OOS, or is
   per-ticker performance unstable (rank correlation train→test)?
-- **B3 [open] Timescale sweep.** Daily vs hourly bars (daily needs retrain —
-  small models train in seconds locally; anything projected >15 min GPU is
-  written up as a RunPod proposal instead of run — house rule). Also horizon
-  variants on existing hourly.
+- **B3 [done 2026-08-24 0d2ffb2] Timescale sweep.** `signals/timescale.py` (annual-turnover
+  normalization) + `scripts/timescale_sweep.py` ({1h,1d} x persistence/mean-rev x hold
+  {1,2,3,5,10}, 400 rows task="B3") + 4 tests (suite 591 passed). Verdict: daily dominates
+  hourly at every matched turnover band — daily mean_rev h2 ~62 chg/yr -> +0.15 Sharpe vs
+  hourly best -0.06 at ~91 chg/yr; turnover-matching does NOT rescue hourly. Rules-based half
+  done; daily-model-retrain comparison proposed as B5 (needs Aaron's nod).
+  Report: `research/2026-08-24-0030.md`.
 - **B4 [done 2026-08-24 9b4fe0e] Trade management (holding/sizing).**
   `signals/trade_mgmt.py` (holding overlay + vol-scaled sizing) + `scripts/trade_mgmt.py` + 15 tests
   (suite 587 passed). Holding periods rescue daily mean-reversion from cost death: hold=5 cuts turnover
@@ -113,7 +116,10 @@ flat-bias detection (Round-2 criteria — see PHASE12_RESULTS.md), costs at
   vol-scaled), tercile threshold sweep, holding-period/exit variants. Backtest
   on train, confirm on the untouched forward record where possible.
 - **B5 [open] Open lane.** Proposals earned by B1–B4 findings; each needs
-  Aaron's nod in the report before heavy implementation.
+  Aaron's nod in the report before heavy implementation. Recommended first:
+  walk-forward stability of the hold parameter (h5 was selected and reported on
+  the same window); second: daily-bar WaveletGPT retrain for model-rule timescale
+  comparison.
 
 ## Ledger protocol (every pass)
 
