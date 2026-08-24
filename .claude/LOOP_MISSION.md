@@ -115,11 +115,12 @@ flat-bias detection (Round-2 criteria — see PHASE12_RESULTS.md), costs at
   same-direction signals), sizing variants (flat vs magnitude-scaled vs
   vol-scaled), tercile threshold sweep, holding-period/exit variants. Backtest
   on train, confirm on the untouched forward record where possible.
-- **B5 [open] Open lane.** Proposals earned by B1–B4 findings; each needs
-  Aaron's nod in the report before heavy implementation. Recommended first:
-  walk-forward stability of the hold parameter (h5 was selected and reported on
-  the same window); second: daily-bar WaveletGPT retrain for model-rule timescale
-  comparison.
+- **B5 [done 2026-08-24 cb852c4] Walk-forward hold stability** (`signals/walkforward.py`,
+  `scripts/hold_walkforward.py`, 20 tickers x 4 folds): hold=5 re-selected only 38%
+  OOS; honest walk-forward Sharpe **-0.20** (h5 fixed -0.14 on same folds). B4's
+  +0.30 h5 headline was a selection artifact. h=10 (+0.83) is itself peeked —
+  longer-hold proposal or Phase-B closeout needs Aaron's nod.
+  Remaining lane: daily-bar WaveletGPT retrain (Aaron-gated, NOT started).
 
 ## Ledger protocol (every pass)
 
