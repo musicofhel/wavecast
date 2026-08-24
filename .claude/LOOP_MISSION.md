@@ -80,7 +80,12 @@ flat-bias detection (Round-2 criteria — see PHASE12_RESULTS.md), costs at
 7bps, and a persistence baseline. Results append to `research/results.jsonl`
 (schema: task A4's metrics + config hash + data window).
 
-- **B1 [open] Backtest grid harness.** One entry point that runs {universe
+- **B1 [done 2026-08-24 dcc4138] Backtest grid harness.** `signals/grid.py` +
+  `scripts/backtest_grid.py` + 17 tests (suite 561 passed). First grid run:
+  160 cells at 7bps — hourly persistence median Sharpe -0.95 (per-bar flipping is
+  cost-dominated; A4's +2.18 was daily-resolution), 1d median -0.27, best cell BAC 1d
+  persistence +1.14. Ledger: `research/results.jsonl`. Report: `research/2026-08-23-2359.md`.
+  Original: One entry point that runs {universe
   subset × interval × trading rule} through the existing `signals/` framework
   (SignalBacktest, PositionSizer, TransactionCostModel) against the trained
   model's signals; results ledger + tests.
