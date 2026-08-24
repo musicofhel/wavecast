@@ -34,4 +34,4 @@ exec claude \
   --settings "$HOME/wavecast/.claude/rw-loop-settings.json" \
   --allowedTools "Read,Grep,Glob,Write,Edit,Bash" \
   --max-turns 150 \
-  -p "/wavecast-pass"
+  -p "/wavecast-pass${1:+ $1}"
