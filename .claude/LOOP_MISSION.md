@@ -56,7 +56,8 @@ READ it freely, write NEVER; scratch runs go to
   backfills missed sessions into `loop_scratch/` (NEVER the production ledger)
   and write up how Aaron promotes/merges it. Done = census table in the report
   + catch-up run demonstrated on ≥1 missed day into scratch.
-- **A4 [open] Honest forward evaluation harness — the "proper test".**
+- **A4 [done 2026-08-23 72ef72f] Honest forward eval harness.** `evaluation/forward_ledger.py` + `scripts/forward_eval.py` + 16 tests (suite 544 passed). Verdict: archived claim REFUTED on 6mo OOS — unfiltered 32.6% (random), A2i-filtered 55.5% [49.8%, 61.0%] on n=301 loses money after 7bps; persistence baseline Sharpe +2.18 vs model -0.26 on the same set. Report: `research/2026-08-23-2318.md`.
+  Original: Honest forward evaluation harness — the "proper test".**
   `scripts/forward_eval.py` + unit tests, reading the production ledger
   READ-ONLY: overall + A2i-filtered economic directional accuracy with Wilson
   CIs, per-ticker and per-month breakdown, Sharpe/expectancy at 7bps round-trip
