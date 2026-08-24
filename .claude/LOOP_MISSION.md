@@ -89,7 +89,13 @@ flat-bias detection (Round-2 criteria — see PHASE12_RESULTS.md), costs at
   subset × interval × trading rule} through the existing `signals/` framework
   (SignalBacktest, PositionSizer, TransactionCostModel) against the trained
   model's signals; results ledger + tests.
-- **B2 [open] Ticker/universe selection.** Per-ticker forward + backtest
+- **B2 [done 2026-08-24 db2576e] Ticker/universe selection.** `signals/stability.py`
+  + `scripts/ticker_stability.py` + 11 tests (suite 572 passed). Spearman train→test
+  ≈ +0.5 for daily persistence/mean-rev, ≈0 for momentum; top-5-by-train beats full
+  universe OOS only at 1d persistence (+0.38 vs −0.41) and is regime-concentration
+  risk (UNG/AMZN flipped). Hourly cost-dead for every ticker.
+  Report: `research/2026-08-24-0009.md`.
+  Original: Per-ticker forward + backtest
   performance; does a top-K sub-universe chosen on train hold up OOS, or is
   per-ticker performance unstable (rank correlation train→test)?
 - **B3 [open] Timescale sweep.** Daily vs hourly bars (daily needs retrain —

@@ -1,4 +1,4 @@
-# WaveCast loop — research INDEX (updated 2026-08-24, pass 7)
+# WaveCast loop — research INDEX (updated 2026-08-24, pass 8)
 
 ## Phase A status — COMPLETE
 - **A1** [done 2026-08-23 f57a913] Suite/env baseline: 510 tests pass (~95s), ruff 19→0 errors.
@@ -9,15 +9,17 @@
 
 ## Phase B status
 - **B1** [done 2026-08-24 dcc4138] Backtest grid harness (`signals/grid.py`, `scripts/backtest_grid.py`): rules {persistence, mean_reversion, momentum:lb, model}, 7bps round-trip, flat-rate + persistence baseline per cell, JSONL ledger `research/results.jsonl`.
-- **B2–B5** open. Next: **B2** per-ticker stability, or wire model predictions into `model` cells via `--predictions`.
+- **B2** [done 2026-08-24 87c2c9e/db2576e] Ticker stability (`signals/stability.py`, `scripts/ticker_stability.py`): spearman train→test ≈ +0.5 on daily persistence/mean-rev (≈0 for momentum); top-5-by-train beats full universe OOS only for 1d persistence (+0.38 vs −0.41); selection is regime-concentration risk (UNG/AMZN flipped negative). Hourly cost-dead for ALL tickers.
+- **B3–B5** open. Next: **B4** trade management (holding periods/exits/sizing on 1d persistence & mean-rev) — orchestrator-preferred over B3; B1/B2 both say turnover is the binding constraint.
 
 ## Latest measurements
-- `pytest tests/ -q`: **561 passed**, ~93s; ruff clean.
-- B1 first grid run (160 cells, 20 tickers × {1h,1d} × 4 rules, 7bps): median Sharpe by rule — persistence −0.85, mean_reversion −0.65, momentum(lb 2/8) −0.54. By interval: 1h −0.95 vs 1d −0.27. Best: BAC 1d persistence +1.14, GS 1d momentum +0.78.
-- **Key nuance for Aaron's persistence question:** A4's forward-ledger persistence (+2.18) was daily-resolution; per-bar hourly persistence at 7bps is deeply negative — the edge question must be tested with holding periods (B4), not bar-flipping.
-- A4 verdict (unchanged, n=1860): unfiltered econ acc 32.6%; A2i-filtered 55.5%, negative expectancy at 7bps.
+- `pytest tests/ -q`: **572 passed**, ~97s; ruff clean.
+- B2 stability run (20 tickers × {1h,1d} × 4 rule configs, train_end=2024-06-30, 7bps): see report table; headline — 1d persistence rho +0.51, topK_te +0.38 vs full_te −0.41.
+- B1 grid (160 cells): median Sharpe by interval — 1h −0.95 vs 1d −0.27; best BAC 1d persistence +1.14.
+- A4 verdict (n=1860): unfiltered econ acc 32.6%; A2i-filtered 55.5%, negative expectancy at 7bps.
 
 ## Reports (newest first)
+- research/2026-08-24-0009.md — Pass 8 / B2: per-ticker stability, rank correlation, top-K OOS check.
 - research/2026-08-23-2359.md — Pass 7 / B1: grid harness, first 160-cell run, hourly-cost finding.
 - research/2026-08-23-2327.md — Pass 5 / A5: e2e cycle proof, resolve-phase gap, 429 coverage loss.
 - research/2026-08-23-2318.md — Pass 4 / A4: eval harness, verdict paragraph, persistence finding.
