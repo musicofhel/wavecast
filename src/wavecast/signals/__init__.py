@@ -9,6 +9,14 @@ from wavecast.signals.config import (
 )
 from wavecast.signals.costs import TransactionCostModel
 from wavecast.signals.generator import ReturnSignalGenerator, SignalGenerator
+from wavecast.signals.grid import (
+    TRADING_RULES,
+    GridCell,
+    append_results,
+    load_results,
+    run_cell,
+    run_grid,
+)
 from wavecast.signals.position import PositionSizer
 from wavecast.signals.types import (
     SignalBacktestResult,
@@ -19,6 +27,12 @@ from wavecast.signals.types import (
 
 __all__ = [
     "SignalBacktest",
+    "GridCell",
+    "TRADING_RULES",
+    "append_results",
+    "load_results",
+    "run_cell",
+    "run_grid",
     "ReturnSignalGenerator",
     "SignalGenerator",
     "PositionSizer",
