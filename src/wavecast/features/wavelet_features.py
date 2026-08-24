@@ -68,10 +68,7 @@ def extract(decomp: WaveletDecomposition) -> NDArray:
     # Cross-level features
     energies = np.array([np.sum(d**2) for d in details], dtype=np.float64)
     total_energy = energies.sum()
-    if total_energy > 0:
-        energy_ratios = energies / total_energy
-    else:
-        energy_ratios = np.zeros_like(energies)
+    energy_ratios = energies / total_energy if total_energy > 0 else np.zeros_like(energies)
 
     # Energy concentration (Gini-like): how concentrated is energy across levels
     sorted_ratios = np.sort(energy_ratios)[::-1]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -145,14 +146,12 @@ def stage_fractal(
 
         mfdfa_result: MFDFAResult | None = None
         if len(ts.values) >= 256:
-            try:
+            with contextlib.suppress(Exception):
                 mfdfa_result = compute_mfdfa(
                     ts.values,
                     q_range=cfg.fractal.mfdfa_q_range,
                     q_steps=cfg.fractal.mfdfa_q_steps,
                 )
-            except Exception:
-                pass
 
         decomp = decompose(ts, wavelet=cfg.wavelet.wavelet, level=cfg.wavelet.level)
         self_sim = cross_scale_similarity(decomp)

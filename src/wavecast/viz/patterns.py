@@ -54,10 +54,7 @@ def plot_shapelet_gallery(
     rows = math.ceil(n / cols)
     fig, axes = plt.subplots(rows, cols, figsize=(4 * cols, 3 * rows))
 
-    if rows == 1 and cols == 1:
-        axes_flat = [axes]
-    else:
-        axes_flat = np.asarray(axes).flatten().tolist()
+    axes_flat = [axes] if rows == 1 and cols == 1 else np.asarray(axes).flatten().tolist()
 
     label_colors = {"up": "#4CAF50", "down": "#F44336", "flat": "#FFC107"}
 
