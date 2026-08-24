@@ -1,4 +1,4 @@
-# WaveCast loop — research INDEX (updated 2026-08-24, pass 8)
+# WaveCast loop — research INDEX (updated 2026-08-24, pass 9)
 
 ## Phase A status — COMPLETE
 - **A1** [done 2026-08-23 f57a913] Suite/env baseline: 510 tests pass (~95s), ruff 19→0 errors.
@@ -9,16 +9,19 @@
 
 ## Phase B status
 - **B1** [done 2026-08-24 dcc4138] Backtest grid harness (`signals/grid.py`, `scripts/backtest_grid.py`): rules {persistence, mean_reversion, momentum:lb, model}, 7bps round-trip, flat-rate + persistence baseline per cell, JSONL ledger `research/results.jsonl`.
-- **B2** [done 2026-08-24 87c2c9e/db2576e] Ticker stability (`signals/stability.py`, `scripts/ticker_stability.py`): spearman train→test ≈ +0.5 on daily persistence/mean-rev (≈0 for momentum); top-5-by-train beats full universe OOS only for 1d persistence (+0.38 vs −0.41); selection is regime-concentration risk (UNG/AMZN flipped negative). Hourly cost-dead for ALL tickers.
-- **B3–B5** open. Next: **B4** trade management (holding periods/exits/sizing on 1d persistence & mean-rev) — orchestrator-preferred over B3; B1/B2 both say turnover is the binding constraint.
+- **B2** [done 2026-08-24 db2576e] Ticker stability (`signals/stability.py`, `scripts/ticker_stability.py`): spearman train→test ≈ +0.5 on daily persistence/mean-rev (≈0 for momentum); top-K selection = regime-concentration risk. Hourly cost-dead for ALL tickers.
+- **B4** [done 2026-08-24 9b4fe0e] Trade management (`signals/trade_mgmt.py`, `scripts/trade_mgmt.py`): holding overlay + vol-scaled sizing on daily persistence/mean-rev. Headline: hold=5 cuts turnover 0.49→0.12 and lifts OOS mean Sharpe −0.25 → **+0.30** (train agrees; 11–12/20 tickers positive). Persistence negative at every hold; top-K still adds nothing; vol-sizing neutral. Pyramiding/exits deferred.
+- **B3, B5** open. Next: **B3** timescale sweep, or a B5 walk-forward re-fit of the hold parameter (is hold=5 stable or cherry-picked?) — recommended before treating it as a setting.
 
 ## Latest measurements
-- `pytest tests/ -q`: **572 passed**, ~97s; ruff clean.
-- B2 stability run (20 tickers × {1h,1d} × 4 rule configs, train_end=2024-06-30, 7bps): see report table; headline — 1d persistence rho +0.51, topK_te +0.38 vs full_te −0.41.
-- B1 grid (160 cells): median Sharpe by interval — 1h −0.95 vs 1d −0.27; best BAC 1d persistence +1.14.
+- `pytest tests/ -q`: **587 passed**, ~94s; ruff clean.
+- B4 sweep (400 rows in `research/results.jsonl`, task="B4"; daily bars, train_end 2024-06-30, 7bps): test mean Sharpe by config — mean_rev h1 −0.25 / h2 +0.15 / h3 −0.02 / h5 +0.30 / h10 +0.29; persistence ≤ −0.09 at best.
+- B2 stability run: 1d persistence rho +0.51, topK_te +0.38 vs full_te −0.41.
+- B1 grid (160 cells): median Sharpe 1h −0.95 vs 1d −0.27; best cell BAC 1d persistence +1.14.
 - A4 verdict (n=1860): unfiltered econ acc 32.6%; A2i-filtered 55.5%, negative expectancy at 7bps.
 
 ## Reports (newest first)
+- research/2026-08-24-0020.md — Pass 9 / B4: holding-period overlay rescues daily mean-reversion from cost death.
 - research/2026-08-24-0009.md — Pass 8 / B2: per-ticker stability, rank correlation, top-K OOS check.
 - research/2026-08-23-2359.md — Pass 7 / B1: grid harness, first 160-cell run, hourly-cost finding.
 - research/2026-08-23-2327.md — Pass 5 / A5: e2e cycle proof, resolve-phase gap, 429 coverage loss.

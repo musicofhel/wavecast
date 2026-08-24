@@ -102,7 +102,13 @@ flat-bias detection (Round-2 criteria — see PHASE12_RESULTS.md), costs at
   small models train in seconds locally; anything projected >15 min GPU is
   written up as a RunPod proposal instead of run — house rule). Also horizon
   variants on existing hourly.
-- **B4 [open] Trade management.** Pyramiding (scale-in on consecutive
+- **B4 [done 2026-08-24 9b4fe0e] Trade management (holding/sizing).**
+  `signals/trade_mgmt.py` (holding overlay + vol-scaled sizing) + `scripts/trade_mgmt.py` + 15 tests
+  (suite 587 passed). Holding periods rescue daily mean-reversion from cost death: hold=5 cuts turnover
+  0.49->0.12 and lifts OOS mean Sharpe -0.25 -> **+0.30** (train agrees, 11-12/20 tickers positive);
+  persistence stays negative at every hold; ticker top-K still adds nothing; vol-sizing neutral.
+  Pyramiding/exits deferred. Report: `research/2026-08-24-0020.md`.
+  Original: Trade management. Pyramiding (scale-in on consecutive
   same-direction signals), sizing variants (flat vs magnitude-scaled vs
   vol-scaled), tercile threshold sweep, holding-period/exit variants. Backtest
   on train, confirm on the untouched forward record where possible.
