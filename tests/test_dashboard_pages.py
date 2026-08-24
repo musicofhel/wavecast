@@ -11,7 +11,9 @@ import time
 import urllib.request
 
 import pytest
-from playwright.sync_api import Page, expect, sync_playwright
+
+pytest.importorskip("playwright.sync_api")
+from playwright.sync_api import Page, expect, sync_playwright  # noqa: E402
 
 STREAMLIT_PORT = 8502
 STREAMLIT_URL = f"http://localhost:{STREAMLIT_PORT}"
