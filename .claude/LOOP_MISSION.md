@@ -66,10 +66,11 @@ READ it freely, write NEVER; scratch runs go to
   audit trap). Verdict paragraph: is the archived "66.7% acc / +10.40 Sharpe"
   claim alive, degraded, or refuted on 6 months OOS? Done = script + tests
   green + verdict with numbers in the report.
-- **A5 [open] End-to-end forecast proof.** One full forward-test cycle today
-  into `loop_scratch/` (fetch → predict → later resolve): model loads,
-  predictions land, resolution works with the A2 fixes. Done = scratch
-  predictions.jsonl rows exist + the cycle's log is clean.
+- **A5 [done 2026-08-23 93003b5] End-to-end forecast proof.**
+  `scripts/a5_e2e_cycle.py`: run_once logged 18 pending rows, CatchupRunner 16,
+  explicit resolve phase resolved 15/16 (3 correct) into `loop_scratch/`.
+  Finding: Massive 429s still kill 10-30% of tickers per cycle; catch-up rows
+  need a separate resolve pass. Report: `research/2026-08-23-2327.md`.
 
 ## Phase B — auto-research: backtests (unlocked when A1–A5 are done)
 
