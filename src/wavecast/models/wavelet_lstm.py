@@ -63,7 +63,7 @@ class WaveletLSTMNet(nn.Module):
             extra: Optional (batch, extra_features_size) tensor.
         """
         hidden_states = []
-        for lstm, x in zip(self.branches, branch_inputs):
+        for lstm, x in zip(self.branches, branch_inputs, strict=True):
             # x shape: (batch, seq_len, 1)
             _, (h_n, _) = lstm(x)
             # h_n shape: (num_layers, batch, hidden_size) — take last layer
@@ -167,11 +167,10 @@ class WaveletLSTM(BaseModel):
         patience_counter = 0
         best_state = None
 
-        for epoch in range(self._config["epochs"]):
+        for _epoch in range(self._config["epochs"]):
             self._net.train()
             epoch_loss = 0.0
-            n_batches = 0
-            for X_batch, y_batch in loader:
+            for _n_batches, (X_batch, y_batch) in enumerate(loader, start=1):
                 X_batch = X_batch.numpy()
                 y_batch = y_batch.to(self._device)
                 branches, extra = self._to_tensors(X_batch)
@@ -181,7 +180,6 @@ class WaveletLSTM(BaseModel):
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
-                n_batches += 1
 
             # Validation early stopping
             if X_val is not None and y_val is not None:

@@ -33,6 +33,67 @@ _INTERVAL_TO_TIMESPAN = {
 }
 
 
+# Rate-limit retry policy: Massive returns 429 under load; the forward cron
+# was dying on a single MaxRetryError, so retries happen here with backoff.
+_MAX_RETRIES = 5
+_BACKOFF_BASE_SECONDS = 2.0
+_BACKOFF_CAP_SECONDS = 60.0
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """True if the exception looks like an HTTP 429 from the Massive client."""
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    text = str(exc).lower()
+    return "429" in text or "rate limit" in text or "too many requests" in text
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """Extract Retry-After (seconds) from the exception's headers, if present."""
+    headers = getattr(exc, "headers", None)
+    if not headers:
+        return None
+    try:
+        return float(headers.get("Retry-After") or headers.get("retry-after"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _fetch_aggs_with_retry(client, ticker: str, multiplier: int, timespan: str,
+                           start: str, end: str) -> list:
+    """Collect list_aggs results, retrying on 429 with exponential backoff.
+
+    Honors Retry-After when the API provides it. Raises DataError after
+    _MAX_RETRIES attempts.
+    """
+    aggs = []
+    for attempt in range(_MAX_RETRIES):
+        try:
+            for a in client.list_aggs(
+                ticker=ticker,
+                multiplier=multiplier,
+                timespan=timespan,
+                from_=start,
+                to=end,
+                limit=50000,
+            ):
+                aggs.append(a)
+            return aggs
+        except Exception as e:  # noqa: BLE001 — massive client raises varied errors
+            if not _is_rate_limit_error(e) or attempt == _MAX_RETRIES - 1:
+                raise DataError(f"Massive API error for {ticker}: {e}") from e
+            retry_after = _retry_after_seconds(e)
+            delay = retry_after if retry_after is not None else min(
+                _BACKOFF_BASE_SECONDS * (2**attempt), _BACKOFF_CAP_SECONDS
+            )
+            logger.warning(
+                "429 for %s (attempt %d/%d), backing off %.1fs",
+                ticker, attempt + 1, _MAX_RETRIES, delay,
+            )
+            time.sleep(delay)
+    raise DataError(f"Massive API error for {ticker}: exhausted retries")  # pragma: no cover
+
+
 def _get_massive_client():  # type: ignore[no-untyped-def]
     """Get an authenticated Massive REST client."""
     api_key = os.environ.get("MASSIVE_API_KEY")
@@ -83,16 +144,9 @@ def fetch_massive(
     timespan, multiplier = timespan_info
 
     try:
-        aggs = []
-        for a in client.list_aggs(
-            ticker=ticker,
-            multiplier=multiplier,
-            timespan=timespan,
-            from_=start,
-            to=end,
-            limit=50000,
-        ):
-            aggs.append(a)
+        aggs = _fetch_aggs_with_retry(client, ticker, multiplier, timespan, start, end)
+    except (DataError, DataNotFoundError):
+        raise
     except Exception as e:
         raise DataError(f"Massive API error for {ticker}: {e}") from e
 
@@ -208,19 +262,7 @@ def fetch_massive_ohlcv(
         )
     timespan, multiplier = timespan_info
 
-    try:
-        aggs = []
-        for a in client.list_aggs(
-            ticker=ticker,
-            multiplier=multiplier,
-            timespan=timespan,
-            from_=start,
-            to=end,
-            limit=50000,
-        ):
-            aggs.append(a)
-    except Exception as e:
-        raise DataError(f"Massive API error for {ticker}: {e}") from e
+    aggs = _fetch_aggs_with_retry(client, ticker, multiplier, timespan, start, end)
 
     if not aggs:
         raise DataNotFoundError(
@@ -289,10 +331,7 @@ def fetch_latest_bars(
     # For intraday intervals, account for limited trading hours (~7h/day, 5d/week).
     # Stocks trade ~7 hours/day on 5 of 7 calendar days, so each trading-hour bar
     # corresponds to ~24/7 * 7/5 ≈ 4.8 calendar hours. Use 5x buffer for safety.
-    if hours_per_bar < 24:
-        buffer_multiplier = 5.0
-    else:
-        buffer_multiplier = 1.5
+    buffer_multiplier = 5.0 if hours_per_bar < 24 else 1.5
     total_hours = n_bars * hours_per_bar * buffer_multiplier
     start = (datetime.now() - timedelta(hours=total_hours)).strftime("%Y-%m-%d")
     end = datetime.now().strftime("%Y-%m-%d")

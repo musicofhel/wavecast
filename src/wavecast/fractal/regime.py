@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -31,14 +33,12 @@ def detect_regime(
     # Attempt MFDFA (requires more data, so allow failure)
     mfdfa_result = None
     if len(values) >= 100:
-        try:
+        with contextlib.suppress(FractalError):
             mfdfa_result = compute_mfdfa(
                 values,
                 q_range=config.mfdfa_q_range,
                 q_steps=config.mfdfa_q_steps,
             )
-        except FractalError:
-            pass
 
     # Confidence is based on R-squared of the Hurst fit and
     # distance from the thresholds

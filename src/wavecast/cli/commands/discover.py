@@ -64,13 +64,12 @@ def run(
 
     console.print(table)
 
-    if output or True:
-        from wavecast.shapelets.library import ShapeletLibrary
+    from wavecast.shapelets.library import ShapeletLibrary
 
-        library = ShapeletLibrary(shapelets)
-        save_path = output or config.library_dir / f"{ticker}_shapelets.h5"
-        library.save(save_path)
-        console.print(f"[green]Saved to {save_path}[/green]")
+    library = ShapeletLibrary(shapelets)
+    save_path = output or config.library_dir / f"{ticker}_shapelets.h5"
+    library.save(save_path)
+    console.print(f"[green]Saved to {save_path}[/green]")
 
 
 @app.command()

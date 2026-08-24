@@ -6,10 +6,10 @@ from wavecast.core.types import MarketLabel, Shapelet
 from wavecast.shapelets.library import ShapeletLibrary
 
 
-def _make_shapelet(id: str, level: int = 1, ticker: str = "T",
+def _make_shapelet(id_: str, level: int = 1, ticker: str = "T",
                    label: MarketLabel = MarketLabel.UP, ig: float = 0.5) -> Shapelet:
     return Shapelet(
-        id=id, coefficients=np.random.default_rng(42).standard_normal(10),
+        id=id_, coefficients=np.random.default_rng(42).standard_normal(10),
         wavelet_level=level, ticker=ticker, label=label,
         information_gain=ig, start_index=0, end_index=10, threshold=1.0,
     )

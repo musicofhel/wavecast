@@ -74,11 +74,13 @@ ignore = [
     "N811",   # constant imported as non-constant
     "B008",   # function call in default arg (typer.Option/Argument by design)
     "TCH",    # type-checking imports (cosmetic, not worth the churn)
+    "UP042",  # str+Enum -> StrEnum changes str() semantics; too risky as a lint fix
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "dashboard/pages/*.py" = ["N999", "E402"]  # Streamlit multipage: numeric-prefix filenames + sys.path before imports
 "dashboard/app.py" = ["E402"]  # sys.path must come before dashboard imports
+"src/wavecast/cli/app.py" = ["E402"]  # load_dotenv() must run before command imports
 
 [tool.ruff.lint.isort]
 known-first-party = ["wavecast"]

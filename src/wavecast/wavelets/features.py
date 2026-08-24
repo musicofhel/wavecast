@@ -48,15 +48,8 @@ def extract_level_features(decomp: WaveletDecomposition) -> NDArray:
         std = np.std(c)
 
         # Higher-order moments (handle constant arrays)
-        if std > 0 and len(c) >= 3:
-            skewness = float(scipy_stats.skew(c))
-        else:
-            skewness = 0.0
-
-        if std > 0 and len(c) >= 4:
-            kurtosis = float(scipy_stats.kurtosis(c))
-        else:
-            kurtosis = 0.0
+        skewness = float(scipy_stats.skew(c)) if std > 0 and len(c) >= 3 else 0.0
+        kurtosis = float(scipy_stats.kurtosis(c)) if std > 0 and len(c) >= 4 else 0.0
 
         features[i] = [energy, variance, entropy, mean, std, skewness, kurtosis]
 

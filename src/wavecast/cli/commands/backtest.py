@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -53,10 +55,8 @@ def run_backtest(
 
         _hurst = wavelet_hurst(ts.values)
         if len(ts.values) >= 256:
-            try:
+            with contextlib.suppress(Exception):
                 compute_mfdfa(ts.values)
-            except Exception:
-                pass
         cross_scale_similarity(decomp)
 
     with console.status("Building feature matrix..."):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import time
 import uuid
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 
+from wavecast.core.exceptions import DataError, DataNotFoundError
 from wavecast.core.types import MultiLevelTokenSequence, TimeSeries, TokenSequence
 from wavecast.data.auxiliary_features import compute_detail_auxiliary_features
 from wavecast.data.continuous_dataset import build_continuous_dataset
@@ -78,8 +80,11 @@ class ForwardTestRunner:
     3. Returns summary
     """
 
-    def __init__(self, config: ForwardTestConfig) -> None:
+    def __init__(self, config: ForwardTestConfig, pacing_seconds: float = 1.0) -> None:
         self.config = config
+        # Inter-ticker pause to stay under the Massive rate limit; one failed
+        # ticker is logged + skipped so a single 429 can't kill the run.
+        self.pacing_seconds = pacing_seconds
         self._model: WaveletGPT | None = None
         self._vocab: SAXVocabulary | None = None
         self._tracker: ForwardTestTracker | None = None
@@ -113,16 +118,27 @@ class ForwardTestRunner:
                 temperature=self.config.signal.temperature,
             )
 
+        first_ticker = True
         for ticker in self.config.tickers:
+            if self.pacing_seconds > 0 and not first_ticker:
+                time.sleep(self.pacing_seconds)
+            first_ticker = False
             for interval in self.config.intervals:
                 logger.info("Processing %s %s", ticker, interval)
 
-                # Fetch latest bars
-                prices = fetch_latest_bars(
-                    ticker=ticker,
-                    interval=interval,
-                    n_bars=self.config.lookback_bars,
-                )
+                # Fetch latest bars; one ticker's API failure must not kill
+                # the run (the production cron died this way on JPM 429s).
+                try:
+                    prices = fetch_latest_bars(
+                        ticker=ticker,
+                        interval=interval,
+                        n_bars=self.config.lookback_bars,
+                    )
+                except (DataError, DataNotFoundError) as e:
+                    logger.warning(
+                        "Fetch failed for %s %s, skipping: %s", ticker, interval, e
+                    )
+                    continue
 
                 # Resolve pending predictions
                 n_resolved = tracker.resolve_pending(ticker, interval, prices)

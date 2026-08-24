@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -230,3 +231,88 @@ class TestForwardTestRunner:
         # 5m, horizon=3
         result = runner._compute_target_timestamp(base, "5m", 3)
         assert "2025-06-01T09:15:00" in result
+
+
+class TestPerTickerIsolation:
+    def _config(self, tmp_path: Path, tickers: list[str]) -> ForwardTestConfig:
+        return ForwardTestConfig(
+            test_name="test_isolation",
+            model_path=str(tmp_path / "model"),
+            vocab_path=str(tmp_path / "vocab.json"),
+            tickers=tickers,
+            intervals=["1h"],
+            lookback_bars=200,
+            log_dir=tmp_path / "logs",
+        )
+
+    def test_fetch_failure_skips_ticker_and_continues(self, tmp_path: Path) -> None:
+        """One ticker's API death must not kill the run (JPM 429 cron failure)."""
+        from wavecast.core.exceptions import DataError
+
+        vocab = _make_vocab()
+        model = _make_mock_model(vocab_size=vocab.size)
+
+        def fake_fetch(ticker: str, **kwargs):  # type: ignore[no-untyped-def]
+            if ticker == "BAD":
+                raise DataError("Massive API error for BAD: 429")
+            return _make_prices(500)
+
+        with (
+            patch.object(ForwardTestRunner, "_load_model", return_value=model),
+            patch.object(ForwardTestRunner, "_load_vocab", return_value=vocab),
+            patch(
+                "wavecast.forward.runner.fetch_latest_bars", side_effect=fake_fetch
+            ),
+        ):
+            runner = ForwardTestRunner(self._config(tmp_path, ["BAD", "AAPL"]))
+            summary = runner.run_once()
+
+        assert summary.total_predictions >= 1
+        rows = [
+            json.loads(line)
+            for line in (tmp_path / "logs" / "test_isolation" / "predictions.jsonl")
+            .read_text()
+            .splitlines()
+        ]
+        assert {r["ticker"] for r in rows} == {"AAPL"}
+
+    def test_all_tickers_failing_returns_empty_summary(self, tmp_path: Path) -> None:
+        """Every fetch failing yields an empty-but-valid summary, no exception."""
+        from wavecast.core.exceptions import DataNotFoundError
+
+        vocab = _make_vocab()
+        model = _make_mock_model(vocab_size=vocab.size)
+
+        with (
+            patch.object(ForwardTestRunner, "_load_model", return_value=model),
+            patch.object(ForwardTestRunner, "_load_vocab", return_value=vocab),
+            patch(
+                "wavecast.forward.runner.fetch_latest_bars",
+                side_effect=DataNotFoundError("no data"),
+            ),
+        ):
+            runner = ForwardTestRunner(self._config(tmp_path, ["X", "Y"]))
+            summary = runner.run_once()
+
+        assert summary.total_predictions == 0
+
+    def test_pacing_sleeps_between_tickers(self, tmp_path: Path) -> None:
+        """pacing_seconds pauses after the first ticker."""
+        vocab = _make_vocab()
+        model = _make_mock_model(vocab_size=vocab.size)
+
+        with (
+            patch.object(ForwardTestRunner, "_load_model", return_value=model),
+            patch.object(ForwardTestRunner, "_load_vocab", return_value=vocab),
+            patch(
+                "wavecast.forward.runner.fetch_latest_bars",
+                return_value=_make_prices(500),
+            ),
+            patch("wavecast.forward.runner.time.sleep") as mock_sleep,
+        ):
+            runner = ForwardTestRunner(
+                self._config(tmp_path, ["A", "B"]), pacing_seconds=2.5
+            )
+            runner.run_once()
+
+        mock_sleep.assert_called_once_with(2.5)
